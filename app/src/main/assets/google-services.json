@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "524135203863",
+    "project_id": "feelfilm-13a52",
+    "storage_bucket": "feelfilm-13a52.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:524135203863:android:7a5af35c009ecc23ac4852",
+        "android_client_info": {
+          "package_name": "com.feelfilm.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAGLtsZXNg1s_a249Sv0p5cMQgkXbjfKPQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

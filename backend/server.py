@@ -1,8 +1,12 @@
 import logging
 import os
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional
 
 import requests
+from requests.adapters import HTTPAdapter
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -24,6 +28,9 @@ DEFAULT_LIMIT_FALLBACK = 40
 MAX_PAGE_FALLBACK = 50
 MAX_LIMIT_FALLBACK = 100
 MAX_CATEGORY_FILTERS_FALLBACK = 6
+CACHE_TTL_SECONDS_FALLBACK = 120
+UPSTREAM_MAX_WORKERS_FALLBACK = 4
+CONNECT_TIMEOUT_SECONDS_FALLBACK = 5.0
 KINOPOISK_API_KEY = os.getenv("KINOPOISK_API_KEY", "").strip()
 KINOPOISK_API_BASE = os.getenv("KINOPOISK_API_BASE", "https://kinopoiskapiunofficial.tech").rstrip("/")
 ALLOWED_ORIGINS_RAW = os.getenv("ALLOWED_ORIGINS", "*").strip()
@@ -63,6 +70,9 @@ def _parse_allowed_origins(raw_value: str) -> List[str]:
 
 
 REQUEST_TIMEOUT_SECONDS = _parse_timeout(os.getenv("REQUEST_TIMEOUT_SECONDS", str(DEFAULT_TIMEOUT_SECONDS)))
+CONNECT_TIMEOUT_SECONDS = _parse_timeout(
+    os.getenv("CONNECT_TIMEOUT_SECONDS", str(CONNECT_TIMEOUT_SECONDS_FALLBACK))
+)
 ALLOWED_ORIGINS = _parse_allowed_origins(ALLOWED_ORIGINS_RAW)
 DEFAULT_PAGE = _parse_positive_int(os.getenv("DEFAULT_PAGE", str(DEFAULT_PAGE_FALLBACK)), DEFAULT_PAGE_FALLBACK, "DEFAULT_PAGE")
 DEFAULT_LIMIT = _parse_positive_int(
@@ -76,6 +86,16 @@ MAX_CATEGORY_FILTERS = _parse_positive_int(
     os.getenv("MAX_CATEGORY_FILTERS", str(MAX_CATEGORY_FILTERS_FALLBACK)),
     MAX_CATEGORY_FILTERS_FALLBACK,
     "MAX_CATEGORY_FILTERS",
+)
+CACHE_TTL_SECONDS = _parse_positive_int(
+    os.getenv("CACHE_TTL_SECONDS", str(CACHE_TTL_SECONDS_FALLBACK)),
+    CACHE_TTL_SECONDS_FALLBACK,
+    "CACHE_TTL_SECONDS",
+)
+UPSTREAM_MAX_WORKERS = _parse_positive_int(
+    os.getenv("UPSTREAM_MAX_WORKERS", str(UPSTREAM_MAX_WORKERS_FALLBACK)),
+    UPSTREAM_MAX_WORKERS_FALLBACK,
+    "UPSTREAM_MAX_WORKERS",
 )
 
 if DEFAULT_PAGE > MAX_PAGE:
@@ -124,6 +144,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+_session = requests.Session()
+_session_adapter = HTTPAdapter(pool_connections=20, pool_maxsize=20, max_retries=0)
+_session.mount("https://", _session_adapter)
+_session.mount("http://", _session_adapter)
+
+_cache_lock = threading.Lock()
+_response_cache: Dict[str, tuple[float, dict]] = {}
+
 
 class UpstreamServiceError(Exception):
     def __init__(self, status_code: int, public_message: str) -> None:
@@ -136,19 +164,48 @@ class UpstreamServiceError(Exception):
 def on_startup() -> None:
     logger.info("Starting FeelFilms API v2.0.0")
     logger.info(
-        "Configuration: api_base=%s timeout=%.1fs default_page=%d default_limit=%d max_page=%d max_limit=%d max_category_filters=%d origins=%s has_api_key=%s",
+        "Configuration: api_base=%s connect_timeout=%.1fs read_timeout=%.1fs default_page=%d default_limit=%d max_page=%d max_limit=%d max_category_filters=%d cache_ttl=%ss workers=%d origins=%s has_api_key=%s",
         KINOPOISK_API_BASE,
+        CONNECT_TIMEOUT_SECONDS,
         REQUEST_TIMEOUT_SECONDS,
         DEFAULT_PAGE,
         DEFAULT_LIMIT,
         MAX_PAGE,
         MAX_LIMIT,
         MAX_CATEGORY_FILTERS,
+        CACHE_TTL_SECONDS,
+        UPSTREAM_MAX_WORKERS,
         ALLOWED_ORIGINS,
         bool(KINOPOISK_API_KEY),
     )
     if not KINOPOISK_API_KEY:
         logger.warning("KINOPOISK_API_KEY is not set. API movie endpoints will return provider unavailable.")
+
+
+def _build_cache_key(path: str, params: Optional[dict]) -> str:
+    if not params:
+        return path
+    canonical = "&".join(f"{k}={params[k]}" for k in sorted(params))
+    return f"{path}?{canonical}"
+
+
+def _cache_get(key: str) -> Optional[dict]:
+    now = time.time()
+    with _cache_lock:
+        item = _response_cache.get(key)
+        if not item:
+            return None
+        expires_at, payload = item
+        if expires_at <= now:
+            _response_cache.pop(key, None)
+            return None
+        return payload
+
+
+def _cache_set(key: str, payload: dict) -> None:
+    expires_at = time.time() + CACHE_TTL_SECONDS
+    with _cache_lock:
+        _response_cache[key] = (expires_at, payload)
 
 
 def _require_api_key() -> None:
@@ -162,11 +219,21 @@ def _require_api_key() -> None:
 
 def _kinopoisk_get(path: str, params: Optional[dict] = None) -> dict:
     _require_api_key()
+    cache_key = _build_cache_key(path, params)
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+
     url = f"{KINOPOISK_API_BASE}{path}"
     headers = {"X-API-KEY": KINOPOISK_API_KEY, "Content-Type": "application/json"}
 
     try:
-        response = requests.get(url, headers=headers, params=params, timeout=REQUEST_TIMEOUT_SECONDS)
+        response = _session.get(
+            url,
+            headers=headers,
+            params=params,
+            timeout=(CONNECT_TIMEOUT_SECONDS, REQUEST_TIMEOUT_SECONDS),
+        )
     except requests.Timeout as exc:
         logger.warning("Kinopoisk timeout: path=%s params=%s", path, params)
         raise UpstreamServiceError(status_code=504, public_message="Movie provider timeout") from exc
@@ -194,7 +261,9 @@ def _kinopoisk_get(path: str, params: Optional[dict] = None) -> dict:
         )
 
     try:
-        return response.json()
+        payload = response.json()
+        _cache_set(cache_key, payload)
+        return payload
     except ValueError as exc:
         logger.warning("Kinopoisk returned invalid JSON: path=%s", path)
         raise UpstreamServiceError(status_code=502, public_message="Invalid response from movie provider") from exc
@@ -291,7 +360,10 @@ def health() -> dict:
         "ok": True,
         "has_api_key": bool(KINOPOISK_API_KEY),
         "api_base": KINOPOISK_API_BASE,
+        "connect_timeout_seconds": CONNECT_TIMEOUT_SECONDS,
         "timeout_seconds": REQUEST_TIMEOUT_SECONDS,
+        "cache_ttl_seconds": CACHE_TTL_SECONDS,
+        "upstream_max_workers": UPSTREAM_MAX_WORKERS,
     }
 
 
@@ -338,18 +410,24 @@ def get_movies(
         }
 
     responses: List[List[dict]] = []
-    for category in selected_categories[:MAX_CATEGORY_FILTERS]:
-        try:
-            category_items = _fetch_category_movies(
-                category=category,
-                requested_type=requested_type,
-                page=page,
-            )
-            if category_items:
-                responses.append(category_items)
-        except UpstreamServiceError as exc:
-            logger.warning("Skipping category '%s' due to upstream error: %s", category, exc.public_message)
-            continue
+    categories_to_fetch = selected_categories[:MAX_CATEGORY_FILTERS]
+    workers = min(UPSTREAM_MAX_WORKERS, max(1, len(categories_to_fetch)))
+
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        future_to_category = {
+            executor.submit(_fetch_category_movies, category, requested_type, page): category
+            for category in categories_to_fetch
+        }
+        for future in as_completed(future_to_category):
+            category = future_to_category[future]
+            try:
+                category_items = future.result()
+                if category_items:
+                    responses.append(category_items)
+            except UpstreamServiceError as exc:
+                logger.warning("Skipping category '%s' due to upstream error: %s", category, exc.public_message)
+            except Exception as exc:
+                logger.exception("Unexpected error while fetching category '%s': %s", category, exc)
 
     if not responses:
         raise HTTPException(status_code=502, detail="Unable to fetch movies from movie provider")

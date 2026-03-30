@@ -1,5 +1,5 @@
-/* ======================================
-   FeelFilm — Стили приложения
+﻿/* ======================================
+   FeelFilm вЂ” РЎС‚РёР»Рё РїСЂРёР»РѕР¶РµРЅРёСЏ
    ====================================== */
 
 /* --- CSS Custom Properties (Design Tokens) --- */
@@ -166,6 +166,7 @@ body::before {
 }
 
 .fav-badge {
+    display: none !important;
     position: absolute;
     top: 4px;
     right: calc(50% - 36px);
@@ -382,6 +383,16 @@ body::before {
     color: rgba(255, 255, 255, 0.6);
 }
 
+.movie-card .card-genres {
+    margin-top: 6px;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.72);
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
 .movie-card .card-desc {
     margin-top: 8px;
     font-size: 12px;
@@ -591,6 +602,44 @@ body::before {
     display: block;
 }
 
+.fav-card.skeleton {
+    pointer-events: none;
+    border-color: rgba(255, 255, 255, 0.06);
+}
+
+.skeleton-poster {
+    width: 100%;
+    aspect-ratio: 2/3;
+    border-radius: 0;
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.06) 25%, rgba(255, 255, 255, 0.12) 50%, rgba(255, 255, 255, 0.06) 75%);
+    background-size: 240% 100%;
+    animation: skeleton-shimmer 1.2s linear infinite;
+}
+
+.skeleton-line {
+    height: 12px;
+    border-radius: 999px;
+    margin-bottom: 8px;
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.06) 25%, rgba(255, 255, 255, 0.12) 50%, rgba(255, 255, 255, 0.06) 75%);
+    background-size: 240% 100%;
+    animation: skeleton-shimmer 1.2s linear infinite;
+}
+
+.skeleton-line.short {
+    width: 62%;
+    margin-bottom: 0;
+}
+
+@keyframes skeleton-shimmer {
+    0% {
+        background-position: 100% 0;
+    }
+
+    100% {
+        background-position: -100% 0;
+    }
+}
+
 .fav-card .fav-info {
     padding: 10px 12px 12px;
 }
@@ -613,6 +662,16 @@ body::before {
     display: flex;
     align-items: center;
     gap: 4px;
+}
+
+.fav-card .fav-genres {
+    margin-top: 4px;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.62);
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
 }
 
 @keyframes card-in {

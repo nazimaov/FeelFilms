@@ -1,5 +1,8 @@
+.env
 __pycache__/
 *.pyc
-.env
+build/
+dist/
+.vscode/
 backend/.env
 .venv/

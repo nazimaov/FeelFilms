@@ -8,6 +8,7 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+# Do not commit `.env` to GitHub. Set secrets via environment variables (e.g., Render dashboard).
 load_dotenv()
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()

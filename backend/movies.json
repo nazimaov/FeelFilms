@@ -1,0 +1,62 @@
+[
+  {
+    "id": 1,
+    "title": "Inception",
+    "description": "A skilled thief enters dreams to steal secrets and gets one last impossible mission.",
+    "poster_url": "https://example.com/posters/inception.jpg",
+    "rating": 8.8,
+    "categories": ["sci-fi", "thriller", "action"],
+    "mood": ["exciting", "mind-bending"],
+    "content_type": "FILM"
+  },
+  {
+    "id": 2,
+    "title": "The Grand Budapest Hotel",
+    "description": "A whimsical concierge and his protégé become involved in a priceless painting heist.",
+    "poster_url": "https://example.com/posters/grand-budapest.jpg",
+    "rating": 8.1,
+    "categories": ["comedy", "adventure", "drama"],
+    "mood": ["light", "fun"],
+    "content_type": "FILM"
+  },
+  {
+    "id": 3,
+    "title": "Stranger Things",
+    "description": "A group of kids in a small town uncover secret experiments and supernatural mysteries.",
+    "poster_url": "https://example.com/posters/stranger-things.jpg",
+    "rating": 8.7,
+    "categories": ["mystery", "fantasy", "horror"],
+    "mood": ["tense", "nostalgic"],
+    "content_type": "SERIES"
+  },
+  {
+    "id": 4,
+    "title": "Soul",
+    "description": "A jazz musician journeys through an otherworldly realm to rediscover joy in life.",
+    "poster_url": "https://example.com/posters/soul.jpg",
+    "rating": 8.0,
+    "categories": ["animation", "family", "fantasy"],
+    "mood": ["warm", "inspiring"],
+    "content_type": "CARTOON"
+  },
+  {
+    "id": 5,
+    "title": "The Dark Knight",
+    "description": "Batman faces the Joker, a criminal mastermind pushing Gotham into chaos.",
+    "poster_url": "https://example.com/posters/dark-knight.jpg",
+    "rating": 9.0,
+    "categories": ["action", "crime", "drama"],
+    "mood": ["intense", "dark"],
+    "content_type": "FILM"
+  },
+  {
+    "id": 6,
+    "title": "Interstellar",
+    "description": "Explorers travel through a wormhole in space in an attempt to ensure humanity's survival.",
+    "poster_url": "https://example.com/posters/interstellar.jpg",
+    "rating": 8.7,
+    "categories": ["sci-fi", "drama", "adventure"],
+    "mood": ["thoughtful", "epic"],
+    "content_type": "FILM"
+  }
+]

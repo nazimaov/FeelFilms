@@ -1,18 +1,88 @@
+import logging
 import os
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import requests
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 load_dotenv()
 
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(
+    level=getattr(logging, LOG_LEVEL, logging.INFO),
+    format="%(asctime)s %(levelname)s %(name)s - %(message)s",
+)
+logger = logging.getLogger("feelfilms.backend")
+
+DEFAULT_TIMEOUT_SECONDS = 20.0
+DEFAULT_PAGE_FALLBACK = 1
+DEFAULT_LIMIT_FALLBACK = 40
+MAX_PAGE_FALLBACK = 50
+MAX_LIMIT_FALLBACK = 100
+MAX_CATEGORY_FILTERS_FALLBACK = 6
 KINOPOISK_API_KEY = os.getenv("KINOPOISK_API_KEY", "").strip()
 KINOPOISK_API_BASE = os.getenv("KINOPOISK_API_BASE", "https://kinopoiskapiunofficial.tech").rstrip("/")
-REQUEST_TIMEOUT = float(os.getenv("REQUEST_TIMEOUT_SECONDS", "20"))
-ALLOWED_ORIGINS_RAW = os.getenv("ALLOWED_ORIGINS", "*")
-ALLOWED_ORIGINS = [origin.strip() for origin in ALLOWED_ORIGINS_RAW.split(",") if origin.strip()]
+ALLOWED_ORIGINS_RAW = os.getenv("ALLOWED_ORIGINS", "*").strip()
+
+
+def _parse_timeout(raw_value: str) -> float:
+    try:
+        timeout = float(raw_value)
+        if timeout <= 0:
+            raise ValueError("Timeout must be positive")
+        return timeout
+    except (TypeError, ValueError):
+        logger.warning(
+            "Invalid REQUEST_TIMEOUT_SECONDS='%s'. Falling back to %.1f",
+            raw_value,
+            DEFAULT_TIMEOUT_SECONDS,
+        )
+        return DEFAULT_TIMEOUT_SECONDS
+
+
+def _parse_positive_int(raw_value: str, fallback: int, name: str) -> int:
+    try:
+        parsed = int(raw_value)
+        if parsed <= 0:
+            raise ValueError("Value must be positive")
+        return parsed
+    except (TypeError, ValueError):
+        logger.warning("Invalid %s='%s'. Falling back to %d", name, raw_value, fallback)
+        return fallback
+
+
+def _parse_allowed_origins(raw_value: str) -> List[str]:
+    if raw_value == "*":
+        return ["*"]
+    values = [origin.strip() for origin in raw_value.split(",") if origin.strip()]
+    return values or ["*"]
+
+
+REQUEST_TIMEOUT_SECONDS = _parse_timeout(os.getenv("REQUEST_TIMEOUT_SECONDS", str(DEFAULT_TIMEOUT_SECONDS)))
+ALLOWED_ORIGINS = _parse_allowed_origins(ALLOWED_ORIGINS_RAW)
+DEFAULT_PAGE = _parse_positive_int(os.getenv("DEFAULT_PAGE", str(DEFAULT_PAGE_FALLBACK)), DEFAULT_PAGE_FALLBACK, "DEFAULT_PAGE")
+DEFAULT_LIMIT = _parse_positive_int(
+    os.getenv("DEFAULT_LIMIT", str(DEFAULT_LIMIT_FALLBACK)),
+    DEFAULT_LIMIT_FALLBACK,
+    "DEFAULT_LIMIT",
+)
+MAX_PAGE = _parse_positive_int(os.getenv("MAX_PAGE", str(MAX_PAGE_FALLBACK)), MAX_PAGE_FALLBACK, "MAX_PAGE")
+MAX_LIMIT = _parse_positive_int(os.getenv("MAX_LIMIT", str(MAX_LIMIT_FALLBACK)), MAX_LIMIT_FALLBACK, "MAX_LIMIT")
+MAX_CATEGORY_FILTERS = _parse_positive_int(
+    os.getenv("MAX_CATEGORY_FILTERS", str(MAX_CATEGORY_FILTERS_FALLBACK)),
+    MAX_CATEGORY_FILTERS_FALLBACK,
+    "MAX_CATEGORY_FILTERS",
+)
+
+if DEFAULT_PAGE > MAX_PAGE:
+    logger.warning("DEFAULT_PAGE (%d) is greater than MAX_PAGE (%d). Adjusting DEFAULT_PAGE.", DEFAULT_PAGE, MAX_PAGE)
+    DEFAULT_PAGE = MAX_PAGE
+if DEFAULT_LIMIT > MAX_LIMIT:
+    logger.warning("DEFAULT_LIMIT (%d) is greater than MAX_LIMIT (%d). Adjusting DEFAULT_LIMIT.", DEFAULT_LIMIT, MAX_LIMIT)
+    DEFAULT_LIMIT = MAX_LIMIT
 
 MOOD_GENRES: Dict[str, Optional[int]] = {
     "all": None,
@@ -21,7 +91,7 @@ MOOD_GENRES: Dict[str, Optional[int]] = {
     "action": 11,
 }
 
-CATEGORY_CONFIG: Dict[str, Dict[str, object]] = {
+CATEGORY_CONFIG: Dict[str, Dict[str, Any]] = {
     "comedy": {"genre_id": 13, "type": "FILM"},
     "horror": {"genre_id": 17, "type": "FILM"},
     "action": {"genre_id": 11, "type": "FILM"},
@@ -43,38 +113,90 @@ CATEGORY_CONFIG: Dict[str, Dict[str, object]] = {
     "short": {"genre_id": 23, "type": "FILM"},
 }
 
-app = FastAPI(title="FeelFilms API", version="1.0.0")
+app = FastAPI(title="FeelFilms API", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS or ["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=False,
-    allow_methods=["GET"],
+    allow_methods=["GET", "OPTIONS"],
     allow_headers=["*"],
 )
 
 
+class UpstreamServiceError(Exception):
+    def __init__(self, status_code: int, public_message: str) -> None:
+        self.status_code = status_code
+        self.public_message = public_message
+        super().__init__(public_message)
+
+
+@app.on_event("startup")
+def on_startup() -> None:
+    logger.info("Starting FeelFilms API v2.0.0")
+    logger.info(
+        "Configuration: api_base=%s timeout=%.1fs default_page=%d default_limit=%d max_page=%d max_limit=%d max_category_filters=%d origins=%s has_api_key=%s",
+        KINOPOISK_API_BASE,
+        REQUEST_TIMEOUT_SECONDS,
+        DEFAULT_PAGE,
+        DEFAULT_LIMIT,
+        MAX_PAGE,
+        MAX_LIMIT,
+        MAX_CATEGORY_FILTERS,
+        ALLOWED_ORIGINS,
+        bool(KINOPOISK_API_KEY),
+    )
+    if not KINOPOISK_API_KEY:
+        logger.warning("KINOPOISK_API_KEY is not set. API movie endpoints will return provider unavailable.")
+
+
 def _require_api_key() -> None:
     if not KINOPOISK_API_KEY:
-        raise HTTPException(status_code=500, detail="KINOPOISK_API_KEY is not configured on server")
+        logger.error("KINOPOISK_API_KEY is missing")
+        raise HTTPException(
+            status_code=503,
+            detail="Movie provider is temporarily unavailable",
+        )
 
 
 def _kinopoisk_get(path: str, params: Optional[dict] = None) -> dict:
     _require_api_key()
     url = f"{KINOPOISK_API_BASE}{path}"
-    headers = {
-        "X-API-KEY": KINOPOISK_API_KEY,
-        "Content-Type": "application/json",
-    }
+    headers = {"X-API-KEY": KINOPOISK_API_KEY, "Content-Type": "application/json"}
+
     try:
-        response = requests.get(url, headers=headers, params=params, timeout=REQUEST_TIMEOUT)
+        response = requests.get(url, headers=headers, params=params, timeout=REQUEST_TIMEOUT_SECONDS)
+    except requests.Timeout as exc:
+        logger.warning("Kinopoisk timeout: path=%s params=%s", path, params)
+        raise UpstreamServiceError(status_code=504, public_message="Movie provider timeout") from exc
     except requests.RequestException as exc:
-        raise HTTPException(status_code=502, detail=f"Kinopoisk request failed: {exc}") from exc
+        logger.warning("Kinopoisk request error: path=%s params=%s error=%s", path, params, exc)
+        raise UpstreamServiceError(status_code=502, public_message=f"Movie provider is unavailable: {exc}") from exc
+
+    if response.status_code == 404:
+        raise UpstreamServiceError(status_code=404, public_message="Movie not found")
+
+    if response.status_code in {401, 403}:
+        logger.error("Kinopoisk authentication failed (status=%s)", response.status_code)
+        raise UpstreamServiceError(status_code=502, public_message="Movie provider authentication failed")
 
     if not response.ok:
-        detail = response.text[:300] if response.text else response.reason
-        raise HTTPException(status_code=response.status_code, detail=detail)
-    return response.json()
+        logger.warning(
+            "Kinopoisk returned non-OK response: status=%s path=%s params=%s",
+            response.status_code,
+            path,
+            params,
+        )
+        raise UpstreamServiceError(
+            status_code=502,
+            public_message=f"Movie provider returned an error (status={response.status_code})",
+        )
+
+    try:
+        return response.json()
+    except ValueError as exc:
+        logger.warning("Kinopoisk returned invalid JSON: path=%s", path)
+        raise UpstreamServiceError(status_code=502, public_message="Invalid response from movie provider") from exc
 
 
 def _parse_categories(raw_categories: str) -> List[str]:
@@ -94,11 +216,13 @@ def _build_score(item: dict) -> float:
         rating_val = float(rating)
     except (TypeError, ValueError):
         rating_val = 0.0
+
     votes = item.get("ratingVoteCount") or item.get("ratingVoteCountKp") or 0
     try:
         votes_val = float(votes)
     except (TypeError, ValueError):
         votes_val = 0.0
+
     return rating_val * 10 + min(votes_val / 1000.0, 10.0)
 
 
@@ -115,9 +239,59 @@ def _merge_ranked(results: List[List[dict]], limit: int) -> List[dict]:
     return ranked[:limit]
 
 
+def _resolve_api_type(requested_type: str, category_type: str) -> str:
+    api_type = requested_type if requested_type != "ALL" else category_type
+    return api_type if api_type in {"ALL", "FILM", "TV_SERIES"} else "ALL"
+
+
+def _fetch_category_movies(category: str, requested_type: str, page: int) -> List[dict]:
+    cfg = CATEGORY_CONFIG.get(category)
+    if not cfg:
+        return []
+
+    genre_id = cfg.get("genre_id")
+    category_type = str(cfg.get("type") or "ALL").upper()
+    api_type = _resolve_api_type(requested_type=requested_type, category_type=category_type)
+
+    params: Dict[str, Any] = {"order": "NUM_VOTE", "type": api_type, "page": page}
+    if genre_id:
+        params["genres"] = int(genre_id)
+
+    data = _kinopoisk_get("/api/v2.2/films", params=params)
+    return _normalize_items(data)
+
+
+@app.exception_handler(UpstreamServiceError)
+async def upstream_exception_handler(request: Request, exc: UpstreamServiceError):
+    logger.warning(
+        "Upstream service error on %s %s: status=%s detail=%s",
+        request.method,
+        request.url.path,
+        exc.status_code,
+        exc.public_message,
+    )
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.public_message})
+
+
+@app.get("/")
+def root() -> dict:
+    return {
+        "name": "FeelFilms API",
+        "version": "2.0.0",
+        "status": "ok",
+        "docs": "/docs",
+        "health": "/health",
+    }
+
+
 @app.get("/health")
 def health() -> dict:
-    return {"ok": True}
+    return {
+        "ok": True,
+        "has_api_key": bool(KINOPOISK_API_KEY),
+        "api_base": KINOPOISK_API_BASE,
+        "timeout_seconds": REQUEST_TIMEOUT_SECONDS,
+    }
 
 
 @app.get("/api/movies")
@@ -125,13 +299,20 @@ def get_movies(
     mood: str = Query("all"),
     categories: str = Query(""),
     content_type: str = Query("ALL"),
-    page: int = Query(1, ge=1, le=50),
-    limit: int = Query(40, ge=10, le=100),
+    page: int = Query(DEFAULT_PAGE, ge=1, le=MAX_PAGE),
+    limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
 ) -> dict:
+    logger.info(
+        "GET /api/movies mood=%s categories=%s content_type=%s page=%s limit=%s",
+        mood,
+        categories,
+        content_type,
+        page,
+        limit,
+    )
     selected_categories = _parse_categories(categories)
     mood_key = mood.lower().strip()
 
-    # Backward compatibility with old mood-based frontend.
     if not selected_categories and mood_key and mood_key != "all":
         if mood_key not in MOOD_GENRES:
             raise HTTPException(status_code=400, detail="Unsupported mood")
@@ -142,34 +323,54 @@ def get_movies(
         raise HTTPException(status_code=400, detail="Unsupported content_type")
 
     if not selected_categories or "all" in selected_categories:
-        return _kinopoisk_get(
+        data = _kinopoisk_get(
             "/api/v2.2/films/collections",
             params={"type": "TOP_POPULAR_ALL", "page": page},
         )
+        items = _normalize_items(data)[:limit]
+        return {
+            "source": "kinopoisk",
+            "page": page,
+            "limit": limit,
+            "total": len(items),
+            "items": items,
+        }
 
     responses: List[List[dict]] = []
-    for category in selected_categories[:6]:
-        cfg = CATEGORY_CONFIG.get(category)
-        if not cfg:
+    for category in selected_categories[:MAX_CATEGORY_FILTERS]:
+        try:
+            category_items = _fetch_category_movies(
+                category=category,
+                requested_type=requested_type,
+                page=page,
+            )
+            if category_items:
+                responses.append(category_items)
+        except UpstreamServiceError as exc:
+            logger.warning("Skipping category '%s' due to upstream error: %s", category, exc.public_message)
             continue
 
-        genre_id = cfg.get("genre_id")
-        category_type = (cfg.get("type") or "ALL").upper()
-        api_type = requested_type if requested_type != "ALL" else category_type
-        if api_type not in {"ALL", "FILM", "TV_SERIES"}:
-            api_type = "ALL"
-
-        params = {"order": "NUM_VOTE", "type": api_type, "page": page}
-        if genre_id:
-            params["genres"] = int(genre_id)
-
-        data = _kinopoisk_get("/api/v2.2/films", params=params)
-        responses.append(_normalize_items(data))
+    if not responses:
+        raise HTTPException(status_code=502, detail="Unable to fetch movies from movie provider")
 
     merged_items = _merge_ranked(responses, limit=limit)
-    return {"items": merged_items, "total": len(merged_items)}
+    return {
+        "source": "kinopoisk",
+        "page": page,
+        "limit": limit,
+        "total": len(merged_items),
+        "items": merged_items,
+    }
 
 
 @app.get("/api/movies/{film_id}")
 def get_movie_details(film_id: int) -> dict:
+    logger.info("GET /api/movies/%s", film_id)
     return _kinopoisk_get(f"/api/v2.2/films/{film_id}")
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    port = int(os.getenv("PORT", "8000"))
+    uvicorn.run("server:app", host="0.0.0.0", port=port)

@@ -26,7 +26,7 @@ PROJECT_ID = "feelfilm-13a52"
 # =====================================================
 # BACKEND API (Kinopoisk key must stay on server)
 # =====================================================
-BACKEND_API_BASE = "https://feelfilms.onrender.com"
+BACKEND_API_BASE = "http://185.73.126.11:8000"
 DEV_BYPASS_AUTH = os.getenv("DEV_BYPASS_AUTH", "1").strip() == "1"
 
 CATEGORY_DEFINITIONS = [

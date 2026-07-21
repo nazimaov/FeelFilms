@@ -1,10 +1,10 @@
 ﻿/* ============================================================
-   FeelFilm вЂ” Р›РѕРіРёРєР° РїСЂРёР»РѕР¶РµРЅРёСЏ
+   FeelFilm — Логика приложения
    Firebase Auth + Firestore + Kinopoisk API
    ============================================================ */
 
 // =====================================================
-// Firebase SDK (v10+ modular, С‡РµСЂРµР· CDN ESM)
+// Firebase SDK (v10+ modular, через CDN ESM)
 // =====================================================
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
 import {
@@ -28,8 +28,8 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 
 // =====================================================
-// вљ пёЏ  FIREBASE CONFIG вЂ” Р’РЎРўРђР’Р¬ РЎР’РћР Р”РђРќРќР«Р•  вљ пёЏ
-// РџРѕР»СѓС‡РёС‚СЊ config РјРѕР¶РЅРѕ РІ Firebase Console:
+// ⚠️  FIREBASE CONFIG — ВСТАВЬ СВОИ ДАННЫЕ  ⚠️
+// Получить config можно в Firebase Console:
 // Project Settings -> General -> Your apps -> Web app
 // =====================================================
 const firebaseConfig = {
@@ -41,12 +41,21 @@ const firebaseConfig = {
     appId: "1:524135203863:web:10214378248da788ac4852"
 };
 // =====================================================
-const BACKEND_API_BASE =
-    window.FEELFILMS_BACKEND_API_BASE ||
-    localStorage.getItem('feelfilms_backend_api_base') ||
-    'https://feelfilms.onrender.com';
+const BACKEND_API_BASE = window.location.hostname === 'appassets.androidplatform.net'
+    ? 'https://appassets.androidplatform.net/api-proxy'
+    : 'http://185.73.126.11:8000';
 
-// --- РРЅРёС†РёР°Р»РёР·Р°С†РёСЏ Firebase ---
+// Централизованные настройки служебных ссылок и метаданных приложения.
+const APP_RUNTIME_CONFIG = {
+    appName: 'FeelFilm',
+    appDescription: 'Приложение для подбора фильмов в формате живой ленты.\n\nСохраняйте интересные фильмы,\nотмечайте просмотренные\nи находите, что посмотреть дальше.',
+    appVersion: '1.0.0',
+    privacyPolicyUrl: 'https://nazimaov.github.io/feelfilm-privacy/',
+    contactEmail: 'feelfilmsupport@gmail.com',
+    contactSubject: 'FeelFilms — обратная связь'
+};
+
+// --- Инициализация Firebase ---
 const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
 const db = getFirestore(firebaseApp);
@@ -56,7 +65,7 @@ setPersistence(auth, browserLocalPersistence).catch((err) => {
     return setPersistence(auth, inMemoryPersistence);
 });
 
-// --- РњР°РїРїРёРЅРі РЅР°СЃС‚СЂРѕРµРЅРёР№ РЅР° Р¶Р°РЅСЂС‹ РљРёРЅРѕРџРѕРёСЃРєР° ---
+// --- Маппинг настроений на жанры КиноПоиска ---
 const CATEGORY_DEFINITIONS = [
     { id: 'all', label: '\u0412\u0441\u0435', icon: '\uD83C\uDFAD', keywords: [], contentType: 'ALL' },
     { id: 'comedy', label: '\u041A\u043E\u043C\u0435\u0434\u0438\u044F', icon: '\uD83D\uDE02', keywords: ['\u043A\u043E\u043C\u0435\u0434'], contentType: 'FILM' },
@@ -82,8 +91,200 @@ const CATEGORY_DEFINITIONS = [
 ];
 
 const CATEGORY_BY_ID = new Map(CATEGORY_DEFINITIONS.map((category) => [category.id, category]));
+const DESCRIPTION_PLACEHOLDER = '\u041e\u043f\u0438\u0441\u0430\u043d\u0438\u0435 \u043e\u0442\u0441\u0443\u0442\u0441\u0442\u0432\u0443\u0435\u0442';
+const DESCRIPTION_FALLBACK = '\u041e\u043f\u0438\u0441\u0430\u043d\u0438\u0435 \u043f\u043e\u043a\u0430 \u043d\u0435 \u0434\u043e\u0431\u0430\u0432\u043b\u0435\u043d\u043e \u0432 \u0438\u0441\u0442\u043e\u0447\u043d\u0438\u043a\u0435.';
+const COUNTRY_CODE_BY_NAME = {
+    'россия': 'RU',
+    'рф': 'RU',
+    'сша': 'US',
+    'америка': 'US',
+    'соединенные штаты': 'US',
+    'соединённые штаты': 'US',
+    'соединенные штаты америки': 'US',
+    'соединённые штаты америки': 'US',
+    'великобритания': 'GB',
+    'англия': 'GB',
+    'соединенное королевство': 'GB',
+    'соединённое королевство': 'GB',
+    'британия': 'GB',
+    'франция': 'FR',
+    'германия': 'DE',
+    'фрг': 'DE',
+    'италия': 'IT',
+    'испания': 'ES',
+    'япония': 'JP',
+    'корея': 'KR',
+    'южная корея': 'KR',
+    'корея южная': 'KR',
+    'северная корея': 'KP',
+    'корея северная': 'KP',
+    'китай': 'CN',
+    'гонконг': 'HK',
+    'тайвань': 'TW',
+    'индия': 'IN',
+    'турция': 'TR',
+    'швеция': 'SE',
+    'норвегия': 'NO',
+    'дания': 'DK',
+    'финляндия': 'FI',
+    'исландия': 'IS',
+    'ирландия': 'IE',
+    'нидерланды': 'NL',
+    'голландия': 'NL',
+    'бельгия': 'BE',
+    'швейцария': 'CH',
+    'австрия': 'AT',
+    'португалия': 'PT',
+    'греция': 'GR',
+    'румыния': 'RO',
+    'болгария': 'BG',
+    'венгрия': 'HU',
+    'сербия': 'RS',
+    'хорватия': 'HR',
+    'словения': 'SI',
+    'словакия': 'SK',
+    'литва': 'LT',
+    'латвия': 'LV',
+    'эстония': 'EE',
+    'беларусь': 'BY',
+    'казахстан': 'KZ',
+    'грузия': 'GE',
+    'армения': 'AM',
+    'азербайджан': 'AZ',
+    'узбекистан': 'UZ',
+    'израиль': 'IL',
+    'оаэ': 'AE',
+    'саудовская аравия': 'SA',
+    'египет': 'EG',
+    'марокко': 'MA',
+    'юар': 'ZA',
+    'нигерия': 'NG',
+    'аргентина': 'AR',
+    'чили': 'CL',
+    'колумбия': 'CO',
+    'перу': 'PE',
+    'венесуэла': 'VE',
+    'польша': 'PL',
+    'чехия': 'CZ',
+    'украина': 'UA',
+    'бразилия': 'BR',
+    'канада': 'CA',
+    'австралия': 'AU',
+    'новая зеландия': 'NZ',
+    'таиланд': 'TH',
+    'тайланд': 'TH',
+    'вьетнам': 'VN',
+    'сингапур': 'SG',
+    'малайзия': 'MY',
+    'индонезия': 'ID',
+    'филиппины': 'PH',
+    'пакистан': 'PK',
+    'бангладеш': 'BD',
+    'шри-ланка': 'LK',
+    'монголия': 'MN',
+    'непал': 'NP',
+    'мексика': 'MX',
+    'new zealand': 'NZ',
+    'usa': 'US',
+    'uk': 'GB',
+    'united states': 'US',
+    'united states of america': 'US',
+    'united kingdom': 'GB',
+    'england': 'GB',
+    'france': 'FR',
+    'germany': 'DE',
+    'italy': 'IT',
+    'spain': 'ES',
+    'japan': 'JP',
+    'korea': 'KR',
+    'south korea': 'KR',
+    'north korea': 'KP',
+    'china': 'CN',
+    'hong kong': 'HK',
+    'taiwan': 'TW',
+    'india': 'IN',
+    'turkey': 'TR',
+    'sweden': 'SE',
+    'norway': 'NO',
+    'denmark': 'DK',
+    'finland': 'FI',
+    'iceland': 'IS',
+    'ireland': 'IE',
+    'netherlands': 'NL',
+    'belgium': 'BE',
+    'switzerland': 'CH',
+    'austria': 'AT',
+    'portugal': 'PT',
+    'greece': 'GR',
+    'romania': 'RO',
+    'bulgaria': 'BG',
+    'hungary': 'HU',
+    'serbia': 'RS',
+    'croatia': 'HR',
+    'slovenia': 'SI',
+    'slovakia': 'SK',
+    'lithuania': 'LT',
+    'latvia': 'LV',
+    'estonia': 'EE',
+    'belarus': 'BY',
+    'kazakhstan': 'KZ',
+    'georgia': 'GE',
+    'armenia': 'AM',
+    'azerbaijan': 'AZ',
+    'uzbekistan': 'UZ',
+    'israel': 'IL',
+    'uae': 'AE',
+    'saudi arabia': 'SA',
+    'egypt': 'EG',
+    'morocco': 'MA',
+    'south africa': 'ZA',
+    'nigeria': 'NG',
+    'poland': 'PL',
+    'czech republic': 'CZ',
+    'ukraine': 'UA',
+    'brazil': 'BR',
+    'canada': 'CA',
+    'australia': 'AU',
+    'thailand': 'TH',
+    'vietnam': 'VN',
+    'singapore': 'SG',
+    'malaysia': 'MY',
+    'indonesia': 'ID',
+    'philippines': 'PH',
+    'pakistan': 'PK',
+    'bangladesh': 'BD',
+    'sri lanka': 'LK',
+    'mongolia': 'MN',
+    'nepal': 'NP',
+    'argentina': 'AR',
+    'chile': 'CL',
+    'colombia': 'CO',
+    'peru': 'PE',
+    'venezuela': 'VE',
+    'mexico': 'MX'
+};
+const COUNTRY_FILTER_OPTIONS = [
+    { name: 'США', flag: '🇺🇸' },
+    { name: 'Россия', flag: '🇷🇺' },
+    { name: 'Великобритания', flag: '🇬🇧' },
+    { name: 'Франция', flag: '🇫🇷' },
+    { name: 'Германия', flag: '🇩🇪' },
+    { name: 'Италия', flag: '🇮🇹' },
+    { name: 'Испания', flag: '🇪🇸' },
+    { name: 'Япония', flag: '🇯🇵' },
+    { name: 'Южная Корея', flag: '🇰🇷' },
+    { name: 'Китай', flag: '🇨🇳' },
+    { name: 'Индия', flag: '🇮🇳' },
+    { name: 'Канада', flag: '🇨🇦' },
+    { name: 'Австралия', flag: '🇦🇺' },
+    { name: 'Турция', flag: '🇹🇷' },
+    { name: 'Польша', flag: '🇵🇱' },
+    { name: 'Украина', flag: '🇺🇦' },
+    { name: 'Бразилия', flag: '🇧🇷' },
+    { name: 'Мексика', flag: '🇲🇽' }
+];
 
-// --- РњР°РїРїРёРЅРі РѕС€РёР±РѕРє Firebase РЅР° СЂСѓСЃСЃРєРёР№ ---
+// --- Маппинг ошибок Firebase на русский ---
 const AUTH_ERRORS = {
     'auth/email-already-in-use': '\u042D\u0442\u043E\u0442 email \u0443\u0436\u0435 \u0437\u0430\u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0438\u0440\u043E\u0432\u0430\u043D',
     'auth/invalid-email': '\u041D\u0435\u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u044B\u0439 email',
@@ -101,20 +302,34 @@ function formatAuthError(err) {
     return `${message} (${code})`;
 }
 
-// --- РЎРѕСЃС‚РѕСЏРЅРёРµ РїСЂРёР»РѕР¶РµРЅРёСЏ ---
+// --- Состояние приложения ---
 const state = {
-    user: null,          // РўРµРєСѓС‰РёР№ РїРѕР»СЊР·РѕРІР°С‚РµР»СЊ Firebase
-    movies: [],          // РўРµРєСѓС‰РёР№ СЃС‚РµРє РєР°СЂС‚РѕС‡РµРє
-    currentIndex: 0,     // РРЅРґРµРєСЃ С‚РµРєСѓС‰РµР№ РІРµСЂС…РЅРµР№ РєР°СЂС‚РѕС‡РєРё
-    favorites: [],       // РР·Р±СЂР°РЅРЅС‹Рµ СЃ Р·Р°РіСЂСѓР¶РµРЅРЅС‹РјРё РґРµС‚Р°Р»СЏРјРё
-    favoriteIds: new Set(), // Р’СЃРµ ID РёР·Р±СЂР°РЅРЅС‹С…
-    favoriteOrderIds: [], // РџРѕСЂСЏРґРѕРє ID РІ РёР·Р±СЂР°РЅРЅРѕРј
-    favoriteDetailsById: new Map(), // Р”РµС‚Р°Р»Рё С„РёР»СЊРјРѕРІ РїРѕ ID
+    user: null,          // Текущий пользователь Firebase
+    movies: [],          // Текущий стек карточек
+    currentIndex: 0,     // Индекс текущей верхней карточки
+    favorites: [],       // Избранные с загруженными деталями
+    favoriteIds: new Set(), // Все ID избранных
+    favoriteOrderIds: [], // Порядок ID в избранном
+    favoriteDetailsById: new Map(), // Детали фильмов по ID
     favoritesVisibleCount: 12,
     favoriteDetailsInFlight: new Set(),
-    seenMovieIds: new Set(), // РџСЂРѕСЃРјРѕС‚СЂРµРЅРЅС‹Рµ (РЅРµ РїРѕРєР°Р·С‹РІР°С‚СЊ РїРѕРІС‚РѕСЂРЅРѕ)
+    likedMovies: [],      // Понравившиеся фильмы
+    likedIds: new Set(),
+    likedOrderIds: [],
+    likedDetailsById: new Map(),
+    likedVisibleCount: 12,
+    likedDetailsInFlight: new Set(),
+    watchedMovies: [],
+    watchedIds: new Set(),
+    watchedOrderIds: [],
+    watchedDetailsById: new Map(),
+    watchedVisibleCount: 12,
+    watchedDetailsInFlight: new Set(),
+    skippedIds: new Set(), // Отклоненные фильмы
+    seenMovieIds: new Set(), // Просмотренные (не показывать повторно)
     allCategories: CATEGORY_DEFINITIONS,
     selectedCategoryIds: new Set(),
+    selectedCountry: '',
     preferences: {
         categoryWeights: {},
         typeWeights: {},
@@ -131,23 +346,191 @@ const state = {
         recentShownIds: []
     },
     lastShownMovieId: null,
-    page: 1,             // РўРµРєСѓС‰Р°СЏ СЃС‚СЂР°РЅРёС†Р° API
+    page: 1,             // Текущая страница API
     isLoading: false,
+    isPrefetching: false,
     currentTab: 'discover'
 };
 
 const FAVORITES_CACHE_PREFIX = 'feelfilms_favorites_cache_v2_';
+const LIKED_CACHE_PREFIX = 'feelfilms_liked_cache_v1_';
+const WATCHED_CACHE_PREFIX = 'feelfilms_watched_cache_v1_';
+const SKIPPED_CACHE_PREFIX = 'feelfilms_skipped_cache_v1_';
+const DISCOVER_FEED_CACHE_PREFIX = 'feelfilms_discover_feed_v1_';
 const FAVORITES_PAGE_SIZE = 12;
 const SEEN_MOVIES_CACHE_PREFIX = 'feelfilms_seen_movies_v1_';
 const SEEN_MOVIES_MAX = 2000;
 const FIRESTORE_TIMEOUT_MS = 8000;
 const INTERACTIONS_CACHE_PREFIX = 'feelfilms_interactions_v1_';
+const PROFILE_NAME_CACHE_PREFIX = 'feelfilms_profile_name_v1_';
+const DISCOVER_FEED_CACHE_TTL_MS = 1000 * 60 * 60 * 18;
+const DISCOVER_FEED_CACHE_MAX_MOVIES = 24;
 const RECENT_SHOWN_MAX = 120;
 const RECENT_SHOWN_PENALTY_WINDOW = 40;
 const MAX_OPEN_COUNT_TRACK = 500;
 
 function getFavoritesCacheKey() {
     return state.user ? `${FAVORITES_CACHE_PREFIX}${state.user.uid}` : null;
+}
+
+function getLikedCacheKey() {
+    return state.user ? `${LIKED_CACHE_PREFIX}${state.user.uid}` : null;
+}
+
+function getWatchedCacheKey() {
+    return state.user ? `${WATCHED_CACHE_PREFIX}${state.user.uid}` : null;
+}
+
+function getSkippedCacheKey() {
+    return state.user ? `${SKIPPED_CACHE_PREFIX}${state.user.uid}` : null;
+}
+
+function getProfileNameCacheKey(uid = state.user?.uid) {
+    return uid ? `${PROFILE_NAME_CACHE_PREFIX}${uid}` : null;
+}
+
+function getDiscoverFeedCacheKey() {
+    return state.user ? `${DISCOVER_FEED_CACHE_PREFIX}${state.user.uid}` : null;
+}
+
+function getDiscoverFilterSignature() {
+    const categories = [...state.selectedCategoryIds].sort().join(',');
+    const country = normalizeSelectedCountryValue(state.selectedCountry);
+    return `${categories}::${country}`;
+}
+
+function loadProfileNameCache(uid = state.user?.uid) {
+    const key = getProfileNameCacheKey(uid);
+    if (!key) return '';
+    try {
+        const raw = localStorage.getItem(key) || '';
+        return raw.trim();
+    } catch (err) {
+        console.warn('Не удалось прочитать кеш имени профиля:', err);
+        return '';
+    }
+}
+
+function saveProfileNameCache(name, uid = state.user?.uid) {
+    const key = getProfileNameCacheKey(uid);
+    if (!key) return;
+    const normalized = (name || '').toString().trim();
+    if (!normalized) return;
+    try {
+        localStorage.setItem(key, normalized);
+    } catch (err) {
+        console.warn('Не удалось сохранить кеш имени профиля:', err);
+    }
+}
+
+function resolveUserDisplayName(user = state.user) {
+    const firebaseName = (user?.displayName || '').toString().trim();
+    if (firebaseName) {
+        saveProfileNameCache(firebaseName, user?.uid);
+        return firebaseName;
+    }
+
+    const cachedName = loadProfileNameCache(user?.uid);
+    if (cachedName) return cachedName;
+
+    const emailLocal = (user?.email || '').split('@')[0].trim();
+    if (emailLocal) {
+        return emailLocal.charAt(0).toUpperCase() + emailLocal.slice(1);
+    }
+
+    return 'Пользователь';
+}
+
+function loadDiscoverFeedCache() {
+    const key = getDiscoverFeedCacheKey();
+    if (!key) return null;
+    try {
+        const raw = localStorage.getItem(key);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') return null;
+        const movies = Array.isArray(parsed.movies) ? parsed.movies : [];
+        const page = Number(parsed.page);
+        const savedAt = Number(parsed.savedAt);
+        const filterSignature = (parsed.filterSignature || '').toString();
+        return {
+            movies,
+            page: Number.isFinite(page) && page > 0 ? page : 1,
+            savedAt: Number.isFinite(savedAt) ? savedAt : 0,
+            filterSignature
+        };
+    } catch (err) {
+        console.warn('Не удалось прочитать кеш ленты:', err);
+        return null;
+    }
+}
+
+function saveDiscoverFeedCache() {
+    const key = getDiscoverFeedCacheKey();
+    if (!key) return;
+
+    const remaining = state.movies
+        .slice(state.currentIndex)
+        .filter((movie) => movie && Number.isFinite(movie.id))
+        .slice(0, DISCOVER_FEED_CACHE_MAX_MOVIES);
+
+    if (remaining.length === 0) {
+        try {
+            localStorage.removeItem(key);
+        } catch (err) {
+            console.warn('Не удалось очистить кеш ленты:', err);
+        }
+        return;
+    }
+
+    const payload = {
+        savedAt: Date.now(),
+        page: state.page,
+        filterSignature: getDiscoverFilterSignature(),
+        movies: remaining
+    };
+
+    try {
+        localStorage.setItem(key, JSON.stringify(payload));
+    } catch (err) {
+        console.warn('Не удалось сохранить кеш ленты:', err);
+    }
+}
+
+function restoreDiscoverFeedFromCache() {
+    const cached = loadDiscoverFeedCache();
+    if (!cached) return false;
+    if (cached.filterSignature !== getDiscoverFilterSignature()) return false;
+    if (!cached.savedAt || (Date.now() - cached.savedAt) > DISCOVER_FEED_CACHE_TTL_MS) {
+        return false;
+    }
+
+    const normalizedMovies = cached.movies
+        .map((movie) => normalizeMovie(movie))
+        .filter((movie) => Number.isFinite(movie.id));
+
+    if (normalizedMovies.length === 0) return false;
+
+    let movies = filterUnseenMovies(normalizedMovies);
+    movies = movies.filter((movie) => isDiscoverCardDisplayable(movie));
+
+    if (movies.length === 0) return false;
+
+    state.page = Math.max(1, cached.page || 1);
+    state.movies = hasUserPreferenceSignals()
+        ? sortMoviesForUser(movies)
+        : sortColdStartMovies(movies);
+    state.currentIndex = 0;
+    state.lastShownMovieId = null;
+
+    loader.classList.add('hidden');
+    loader.style.display = 'none';
+    swipeActions.style.display = 'flex';
+    emptyState.style.display = 'none';
+    errorState.style.display = 'none';
+
+    renderCards();
+    return true;
 }
 
 function loadFavoritesCache() {
@@ -164,7 +547,7 @@ function loadFavoritesCache() {
         const details = parsed.details && typeof parsed.details === 'object' ? parsed.details : {};
         return { ids, details };
     } catch (err) {
-        console.warn('РќРµ СѓРґР°Р»РѕСЃСЊ РїСЂРѕС‡РёС‚Р°С‚СЊ РєРµС€ РёР·Р±СЂР°РЅРЅРѕРіРѕ:', err);
+        console.warn('Не удалось прочитать кеш избранного:', err);
         return { ids: [], details: {} };
     }
 }
@@ -182,13 +565,25 @@ function saveFavoritesCache() {
             details
         }));
     } catch (err) {
-        console.warn('РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕС…СЂР°РЅРёС‚СЊ РєРµС€ РёР·Р±СЂР°РЅРЅРѕРіРѕ:', err);
+        console.warn('Не удалось сохранить кеш избранного:', err);
     }
 }
 
 function syncFavoritesArray() {
     state.favorites = state.favoriteOrderIds
         .map((id) => state.favoriteDetailsById.get(id))
+        .filter(Boolean);
+}
+
+function syncLikedArray() {
+    state.likedMovies = state.likedOrderIds
+        .map((id) => state.likedDetailsById.get(id))
+        .filter(Boolean);
+}
+
+function syncWatchedArray() {
+    state.watchedMovies = state.watchedOrderIds
+        .map((id) => state.watchedDetailsById.get(id))
         .filter(Boolean);
 }
 
@@ -208,14 +603,68 @@ function applyFavoriteDetails(detailsMapLike) {
     syncFavoritesArray();
 }
 
+function applyLikedIds(ids) {
+    state.likedOrderIds = [...ids];
+    state.likedIds = new Set(ids);
+    syncLikedArray();
+}
+
+function applyLikedDetails(detailsMapLike) {
+    state.likedDetailsById = new Map();
+    Object.entries(detailsMapLike || {}).forEach(([rawId, movie]) => {
+        const id = Number(rawId);
+        if (!Number.isFinite(id) || !movie) return;
+        state.likedDetailsById.set(id, movie);
+    });
+    syncLikedArray();
+}
+
+function applyWatchedIds(ids) {
+    state.watchedOrderIds = [...ids];
+    state.watchedIds = new Set(ids);
+    syncWatchedArray();
+}
+
+function applyWatchedDetails(detailsMapLike) {
+    state.watchedDetailsById = new Map();
+    Object.entries(detailsMapLike || {}).forEach(([rawId, movie]) => {
+        const id = Number(rawId);
+        if (!Number.isFinite(id) || !movie) return;
+        state.watchedDetailsById.set(id, movie);
+    });
+    syncWatchedArray();
+}
+
 function upsertFavoriteDetail(movie) {
     if (!movie || !Number.isFinite(movie.id)) return;
     state.favoriteDetailsById.set(movie.id, movie);
     syncFavoritesArray();
 }
 
+function upsertLikedDetail(movie) {
+    if (!movie || !Number.isFinite(movie.id)) return;
+    state.likedDetailsById.set(movie.id, movie);
+    syncLikedArray();
+}
+
+function upsertWatchedDetail(movie) {
+    if (!movie || !Number.isFinite(movie.id)) return;
+    state.watchedDetailsById.set(movie.id, movie);
+    syncWatchedArray();
+}
+
+function isMovieProcessed(movieId) {
+    return state.favoriteIds.has(movieId)
+        || state.likedIds.has(movieId)
+        || state.watchedIds.has(movieId)
+        || state.skippedIds.has(movieId)
+        || state.seenMovieIds.has(movieId);
+}
+
 function applyFavoritesState() {
     syncFavoritesArray();
+    syncLikedArray();
+    syncWatchedArray();
     computePreferences();
     updateFavBadge();
     renderFavorites();
@@ -234,7 +683,7 @@ function loadSeenMoviesCache() {
         const parsed = JSON.parse(raw);
         return new Set(Array.isArray(parsed) ? parsed : []);
     } catch (err) {
-        console.warn('РќРµ СѓРґР°Р»РѕСЃСЊ РїСЂРѕС‡РёС‚Р°С‚СЊ РєРµС€ РїСЂРѕСЃРјРѕС‚СЂРµРЅРЅС‹С… С„РёР»СЊРјРѕРІ:', err);
+        console.warn('Не удалось прочитать кеш просмотренных фильмов:', err);
         return new Set();
     }
 }
@@ -246,7 +695,7 @@ function saveSeenMoviesCache() {
         const values = [...state.seenMovieIds].slice(-SEEN_MOVIES_MAX);
         localStorage.setItem(key, JSON.stringify(values));
     } catch (err) {
-        console.warn('РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕС…СЂР°РЅРёС‚СЊ РєРµС€ РїСЂРѕСЃРјРѕС‚СЂРµРЅРЅС‹С… С„РёР»СЊРјРѕРІ:', err);
+        console.warn('Не удалось сохранить кеш просмотренных фильмов:', err);
     }
 }
 
@@ -257,7 +706,70 @@ function markMovieAsSeen(movieId) {
 }
 
 function filterUnseenMovies(movies) {
-    return movies.filter((movie) => !state.seenMovieIds.has(movie.id));
+    return movies.filter((movie) => !isMovieProcessed(movie.id));
+}
+
+function isMovieInPersistentUserLists(movieId) {
+    return state.favoriteIds.has(movieId)
+        || state.likedIds.has(movieId)
+        || state.watchedIds.has(movieId);
+}
+
+function filterMoviesOutsideUserLists(movies) {
+    return movies.filter((movie) => !isMovieInPersistentUserLists(movie.id));
+}
+
+function normalizeTextForCompare(value) {
+    return (value || '')
+        .toString()
+        .trim()
+        .toLowerCase()
+        .replace(/ё/g, 'е')
+        .replace(/\./g, '')
+        .replace(/\s+/g, ' ');
+}
+
+function normalizeSelectedCountryValue(value) {
+    const raw = (value || '').toString().trim();
+    if (!raw) return '';
+    const normalized = normalizeTextForCompare(raw);
+    if (
+        normalized === 'любая страна' ||
+        normalized === 'любая' ||
+        normalized === 'страна' ||
+        normalized === 'все' ||
+        normalized === 'всё' ||
+        normalized === 'all' ||
+        normalized === 'any'
+    ) {
+        return '';
+    }
+    return raw;
+}
+
+function movieMatchesSelectedCountry(movie) {
+    const selectedCountry = normalizeTextForCompare(normalizeSelectedCountryValue(state.selectedCountry));
+    if (!selectedCountry) return true;
+    const countryValues = [];
+    if (Array.isArray(movie.countries)) {
+        movie.countries.forEach((country) => countryValues.push(country));
+    }
+    if (typeof movie.countriesText === 'string' && movie.countriesText.trim()) {
+        movie.countriesText.split(',').forEach((country) => countryValues.push(country.trim()));
+    }
+    if (countryValues.length === 0) return false;
+
+    return countryValues.some((country) => {
+        const normalized = normalizeTextForCompare(country);
+        return normalized.includes(selectedCountry) || selectedCountry.includes(normalized);
+    });
+}
+
+function applyCountryPreferenceFilter(movies) {
+    const selectedCountry = normalizeSelectedCountryValue(state.selectedCountry);
+    if (!selectedCountry) return movies;
+    const matched = movies.filter((movie) => movieMatchesSelectedCountry(movie));
+    return matched;
 }
 
 function getInteractionsCacheKey() {
@@ -278,6 +790,25 @@ function normalizeIdArray(value) {
     return Array.isArray(value)
         ? value.map((id) => Number(id)).filter((id) => Number.isFinite(id))
         : [];
+}
+
+function resolveStatusConflicts(statuses) {
+    const skippedSet = new Set(normalizeIdArray(statuses?.skippedIds));
+    const watchedList = normalizeIdArray(statuses?.watchedIds).filter((id) => !skippedSet.has(id));
+    const watchedSet = new Set(watchedList);
+    const likedList = normalizeIdArray(statuses?.likedIds).filter(
+        (id) => !skippedSet.has(id) && !watchedSet.has(id)
+    );
+    const likedSet = new Set(likedList);
+    const watchlistList = normalizeIdArray(statuses?.watchlistIds).filter(
+        (id) => !skippedSet.has(id) && !likedSet.has(id) && !watchedSet.has(id)
+    );
+    return {
+        watchlistIds: watchlistList,
+        likedIds: likedList,
+        watchedIds: watchedList,
+        skippedIds: [...skippedSet]
+    };
 }
 
 function normalizeCountMap(raw) {
@@ -309,6 +840,105 @@ function loadInteractionsCache() {
     } catch (err) {
         console.warn('Failed to read interactions cache:', err);
         return createEmptyInteractionsState();
+    }
+}
+
+function loadLikedCache() {
+    const key = getLikedCacheKey();
+    if (!key) return { ids: [], details: {} };
+    try {
+        const raw = localStorage.getItem(key);
+        if (!raw) return { ids: [], details: {} };
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') return { ids: [], details: {} };
+        const ids = Array.isArray(parsed.ids)
+            ? parsed.ids.map((id) => Number(id)).filter((id) => Number.isFinite(id))
+            : [];
+        const details = parsed.details && typeof parsed.details === 'object' ? parsed.details : {};
+        return { ids, details };
+    } catch (err) {
+        console.warn('Не удалось прочитать кеш liked:', err);
+        return { ids: [], details: {} };
+    }
+}
+
+function saveLikedCache() {
+    const key = getLikedCacheKey();
+    if (!key) return;
+    try {
+        const details = {};
+        state.likedDetailsById.forEach((movie, id) => {
+            details[id] = movie;
+        });
+        localStorage.setItem(key, JSON.stringify({
+            ids: state.likedOrderIds,
+            details
+        }));
+    } catch (err) {
+        console.warn('Не удалось сохранить кеш liked:', err);
+    }
+}
+
+function loadWatchedCache() {
+    const key = getWatchedCacheKey();
+    if (!key) return { ids: [], details: {} };
+    try {
+        const raw = localStorage.getItem(key);
+        if (!raw) return { ids: [], details: {} };
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') return { ids: [], details: {} };
+        const ids = Array.isArray(parsed.ids)
+            ? parsed.ids.map((id) => Number(id)).filter((id) => Number.isFinite(id))
+            : [];
+        const details = parsed.details && typeof parsed.details === 'object' ? parsed.details : {};
+        return { ids, details };
+    } catch (err) {
+        console.warn('Не удалось прочитать кеш watched:', err);
+        return { ids: [], details: {} };
+    }
+}
+
+function saveWatchedCache() {
+    const key = getWatchedCacheKey();
+    if (!key) return;
+    try {
+        const details = {};
+        state.watchedDetailsById.forEach((movie, id) => {
+            details[id] = movie;
+        });
+        localStorage.setItem(key, JSON.stringify({
+            ids: state.watchedOrderIds,
+            details
+        }));
+    } catch (err) {
+        console.warn('Не удалось сохранить кеш watched:', err);
+    }
+}
+
+function loadSkippedCache() {
+    const key = getSkippedCacheKey();
+    if (!key) return new Set();
+    try {
+        const raw = localStorage.getItem(key);
+        if (!raw) return new Set();
+        const parsed = JSON.parse(raw);
+        const ids = Array.isArray(parsed)
+            ? parsed.map((id) => Number(id)).filter((id) => Number.isFinite(id))
+            : [];
+        return new Set(ids);
+    } catch (err) {
+        console.warn('Не удалось прочитать кеш skipped:', err);
+        return new Set();
+    }
+}
+
+function saveSkippedCache() {
+    const key = getSkippedCacheKey();
+    if (!key) return;
+    try {
+        localStorage.setItem(key, JSON.stringify([...state.skippedIds]));
+    } catch (err) {
+        console.warn('Не удалось сохранить кеш skipped:', err);
     }
 }
 
@@ -367,6 +997,9 @@ function markMovieDisliked(movieId) {
 
 function hasUserPreferenceSignals() {
     return state.favoriteOrderIds.length > 0
+        || state.likedOrderIds.length > 0
+        || state.watchedOrderIds.length > 0
+        || state.skippedIds.size > 0
         || state.interactions.likedMovieIds.size > 0
         || state.interactions.dislikedMovieIds.size > 0
         || state.interactions.openedCounts.size > 0;
@@ -381,7 +1014,7 @@ function filterRecentlyShownMovies(movies) {
 }
 
 // ============================================================
-// DOM-СЌР»РµРјРµРЅС‚С‹
+// DOM-элементы
 // ============================================================
 const $ = (id) => document.getElementById(id);
 
@@ -401,7 +1034,12 @@ const emptyState = $('empty-state');
 const errorState = $('error-state');
 const errorMessage = $('error-message');
 const favBadge = $('fav-badge');
-const favGrid = $('favorites-grid');
+const watchlistGrid = $('watchlist-grid');
+const likedGrid = $('liked-grid');
+const watchedGrid = $('watched-grid');
+const watchlistSection = $('watchlist-section');
+const likedSection = $('liked-section');
+const watchedSection = $('watched-section');
 const favLoader = $('fav-loader');
 const emptyFavs = $('empty-favorites');
 const popupOverlay = $('popup-overlay');
@@ -409,20 +1047,45 @@ const popupPoster = $('popup-poster');
 const popupTitle = $('popup-title');
 const popupYear = $('popup-year');
 const popupRating = $('popup-rating');
+const popupCountry = $('popup-country');
 const popupGenre = $('popup-genre');
 const popupDesc = $('popup-description');
+const popupToggleWatchlist = $('popup-toggle-watchlist');
+const popupToggleWatchlistText = $('popup-toggle-watchlist-text');
+const popupToggleWatched = $('popup-toggle-watched');
+const popupToggleWatchedText = $('popup-toggle-watched-text');
+const popupTrailerBtn = $('popup-trailer');
+const trailerOverlay = $('trailer-overlay');
+const trailerFrame = $('trailer-frame');
+const trailerClose = $('trailer-close');
 const userMenu = $('user-menu');
 const userName = $('user-name');
 const userEmail = $('user-email');
 const userAvatar = $('user-avatar');
+const settingsOverlay = $('settings-overlay');
+const settingsUserName = $('settings-user-name');
+const settingsUserEmail = $('settings-user-email');
+const settingsUserAvatar = $('settings-user-avatar');
+const aboutModalOverlay = $('about-modal-overlay');
+const aboutAppName = $('about-app-name');
+const aboutAppDescription = $('about-app-description');
+const aboutVersion = $('about-version');
+const confirmModalOverlay = $('confirm-modal-overlay');
+const confirmModalTitle = $('confirm-modal-title');
+const confirmModalMessage = $('confirm-modal-message');
+const confirmModalCancel = $('btn-confirm-cancel');
+const confirmModalOk = $('btn-confirm-ok');
 const moodFilters = $('mood-filters');
+const countryPickerOverlay = $('country-picker-overlay');
+const countryPickerList = $('country-picker-list');
+const countryPickerClose = $('country-picker-close');
 
 // ============================================================
-// FIREBASE AUTH вЂ” Р РµРіРёСЃС‚СЂР°С†РёСЏ Рё Р’С…РѕРґ
+// FIREBASE AUTH — Регистрация и Вход
 // ============================================================
 
 /**
- * Р РµРіРёСЃС‚СЂР°С†РёСЏ РЅРѕРІРѕРіРѕ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ (Email + Password)
+ * Регистрация нового пользователя (Email + Password)
  */
 async function handleRegister(e) {
     e.preventDefault();
@@ -434,16 +1097,17 @@ async function handleRegister(e) {
     setAuthLoading('btn-register', true);
 
     try {
-        // РЎРѕР·РґР°С‘Рј РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ РІ Firebase Auth
+        // Создаём пользователя в Firebase Auth
         const cred = await createUserWithEmailAndPassword(auth, email, password);
 
-        // РћР±РЅРѕРІР»СЏРµРј РїСЂРѕС„РёР»СЊ вЂ” СЃРѕС…СЂР°РЅСЏРµРј РёРјСЏ
+        // Обновляем профиль — сохраняем имя
         await updateProfile(cred.user, { displayName: name });
+        saveProfileNameCache(name, cred.user.uid);
 
-        console.log('вњ… Р РµРіРёСЃС‚СЂР°С†РёСЏ СѓСЃРїРµС€РЅР°:', cred.user.email);
-        // onAuthStateChanged Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё РїРµСЂРµРєР»СЋС‡РёС‚ РЅР° РѕСЃРЅРѕРІРЅРѕР№ СЌРєСЂР°РЅ
+        console.log('✅ Регистрация успешна:', cred.user.email);
+        // onAuthStateChanged автоматически переключит на основной экран
     } catch (err) {
-        console.error('вќЊ РћС€РёР±РєР° СЂРµРіРёСЃС‚СЂР°С†РёРё:', err);
+        console.error('❌ Ошибка регистрации:', err);
         registerError.textContent = formatAuthError(err);
     } finally {
         setAuthLoading('btn-register', false);
@@ -451,7 +1115,7 @@ async function handleRegister(e) {
 }
 
 /**
- * Р’С…РѕРґ СЃСѓС‰РµСЃС‚РІСѓСЋС‰РµРіРѕ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ (Email + Password)
+ * Вход существующего пользователя (Email + Password)
  */
 async function handleLogin(e) {
     e.preventDefault();
@@ -463,10 +1127,10 @@ async function handleLogin(e) {
 
     try {
         const cred = await signInWithEmailAndPassword(auth, email, password);
-        console.log('вњ… Р’С…РѕРґ СѓСЃРїРµС€РµРЅ:', cred.user.email);
-        // onAuthStateChanged Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё РїРµСЂРµРєР»СЋС‡РёС‚ РЅР° РѕСЃРЅРѕРІРЅРѕР№ СЌРєСЂР°РЅ
+        console.log('✅ Вход успешен:', cred.user.email);
+        // onAuthStateChanged автоматически переключит на основной экран
     } catch (err) {
-        console.error('вќЊ РћС€РёР±РєР° РІС…РѕРґР°:', err);
+        console.error('❌ Ошибка входа:', err);
         loginError.textContent = formatAuthError(err);
     } finally {
         setAuthLoading('btn-login', false);
@@ -474,24 +1138,24 @@ async function handleLogin(e) {
 }
 
 /**
- * Р’С‹С…РѕРґ РёР· Р°РєРєР°СѓРЅС‚Р°
+ * Выход из аккаунта
  */
 async function handleLogout() {
     try {
         await signOut(auth);
-        console.log('вњ… Р’С‹С…РѕРґ РёР· Р°РєРєР°СѓРЅС‚Р°');
+        console.log('✅ Выход из аккаунта');
         showAuthScreen();
         loginError.textContent = '';
         registerError.textContent = '';
     } catch (err) {
-        console.error('вќЊ РћС€РёР±РєР° РІС‹С…РѕРґР°:', err);
+        console.error('❌ Ошибка выхода:', err);
         showAuthScreen();
         loginError.textContent = `\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0432\u044b\u0439\u0442\u0438 \u0438\u0437 \u0430\u043a\u043a\u0430\u0443\u043d\u0442\u0430 (${err?.code || 'auth/logout-failed'})`;
     }
 }
 
 /**
- * РџРµСЂРµРєР»СЋС‡РµРЅРёРµ loading-СЃРѕСЃС‚РѕСЏРЅРёСЏ РєРЅРѕРїРєРё
+ * Переключение loading-состояния кнопки
  */
 function setAuthLoading(btnId, isLoading) {
     const btn = $(btnId);
@@ -501,18 +1165,23 @@ function setAuthLoading(btnId, isLoading) {
 }
 
 /**
- * РќР°Р±Р»СЋРґР°С‚РµР»СЊ Р·Р° СЃРѕСЃС‚РѕСЏРЅРёРµРј Р°РІС‚РѕСЂРёР·Р°С†РёРё.
- * Р’С‹Р·С‹РІР°РµС‚СЃСЏ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё РїСЂРё РІС…РѕРґРµ/РІС‹С…РѕРґРµ.
+ * Наблюдатель за состоянием авторизации.
+ * Вызывается автоматически при входе/выходе.
  */
 function setupAuthObserver() {
+    let isInitialAuthResolved = false;
     onAuthStateChanged(auth, (user) => {
+        if (!isInitialAuthResolved) {
+            isInitialAuthResolved = true;
+            document.body.classList.remove('app-booting');
+        }
         if (user) {
-            // вњ… РџРѕР»СЊР·РѕРІР°С‚РµР»СЊ РІРѕС€С‘Р»
+            // ✅ Пользователь вошёл
             const isNewUserSession = state.user?.uid !== user.uid;
             state.user = user;
             showMainApp(user, isNewUserSession);
         } else {
-            // вќЊ РџРѕР»СЊР·РѕРІР°С‚РµР»СЊ РІС‹С€РµР»
+            // ❌ Пользователь вышел
             state.user = null;
             showAuthScreen();
         }
@@ -520,42 +1189,112 @@ function setupAuthObserver() {
 }
 
 /**
- * РџРѕРєР°Р·Р°С‚СЊ РіР»Р°РІРЅРѕРµ РїСЂРёР»РѕР¶РµРЅРёРµ РїРѕСЃР»Рµ РІС…РѕРґР°
+ * Показать главное приложение после входа
  */
 function showMainApp(user, forceReload = false) {
     screenAuth.classList.remove('active');
     screenAuth.style.display = 'none';
     mainApp.style.display = 'flex';
 
-    // РћР±РЅРѕРІР»СЏРµРј UI РїСЂРѕС„РёР»СЏ
-    const displayName = user.displayName || '\u041f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044c';
-    userName.textContent = displayName;
-    userEmail.textContent = user.email;
-    userAvatar.textContent = displayName.charAt(0).toUpperCase();
+    // Обновляем UI профиля
+    syncProfileInfoToSettings();
+    if (aboutVersion) {
+        aboutVersion.textContent = resolveAppVersion();
+    }
+    if (aboutAppName) {
+        aboutAppName.textContent = APP_RUNTIME_CONFIG.appName;
+    }
+    if (aboutAppDescription) {
+        aboutAppDescription.textContent = APP_RUNTIME_CONFIG.appDescription;
+    }
     state.seenMovieIds = loadSeenMoviesCache();
     state.interactions = loadInteractionsCache();
+    const watchlistCache = loadFavoritesCache();
+    const likedCache = loadLikedCache();
+    const watchedCache = loadWatchedCache();
+    const resolvedStatuses = resolveStatusConflicts({
+        watchlistIds: watchlistCache.ids,
+        likedIds: likedCache.ids,
+        watchedIds: watchedCache.ids,
+        skippedIds: [...loadSkippedCache()]
+    });
+    applyFavoritesIds(resolvedStatuses.watchlistIds);
+    applyFavoriteDetails(watchlistCache.details);
+    state.favoritesVisibleCount = FAVORITES_PAGE_SIZE;
+    applyLikedIds(resolvedStatuses.likedIds);
+    applyLikedDetails(likedCache.details);
+    state.likedVisibleCount = FAVORITES_PAGE_SIZE;
+    applyWatchedIds(resolvedStatuses.watchedIds);
+    applyWatchedDetails(watchedCache.details);
+    state.watchedVisibleCount = FAVORITES_PAGE_SIZE;
+    state.skippedIds = new Set(resolvedStatuses.skippedIds);
+    applyFavoritesState();
 
-    // РР·Р±РµРіР°РµРј РІРёР·СѓР°Р»СЊРЅРѕРіРѕ "РїРµСЂРµР·Р°РїСѓСЃРєР°" СЌРєСЂР°РЅР° РїСЂРё РїРѕРІС‚РѕСЂРЅРѕРј auth-СЃРѕР±С‹С‚РёРё
-    if (forceReload || state.movies.length === 0) {
-        loadMovies();
+    const shouldLoadDiscover = forceReload || state.movies.length === 0;
+    let restoredFromCache = false;
+    if (shouldLoadDiscover) {
+        restoredFromCache = restoreDiscoverFeedFromCache();
+        if (!restoredFromCache) {
+            loadMovies();
+        }
     }
+
+    const cloudSyncPromise = syncStatusesFromCloud({ bootstrapLocalToCloudWhenEmpty: true });
+    void cloudSyncPromise
+        .then(() => {
+            if (state.movies.length > 0) {
+                const filteredMovies = filterUnseenMovies(state.movies);
+                if (filteredMovies.length !== state.movies.length) {
+                    state.movies = filteredMovies;
+                    state.currentIndex = 0;
+                    state.lastShownMovieId = null;
+                    if (state.movies.length > 0) {
+                        saveDiscoverFeedCache();
+                        renderCards();
+                    } else if (!state.isLoading) {
+                        loadMovies();
+                    }
+                }
+            } else if (!state.isLoading && !restoredFromCache) {
+                loadMovies();
+            }
+        })
+        .catch((err) => {
+            console.error('Cloud status sync failed during login:', err);
+        });
 }
 
 /**
- * РџРѕРєР°Р·Р°С‚СЊ СЌРєСЂР°РЅ Р°РІС‚РѕСЂРёР·Р°С†РёРё
+ * Показать экран авторизации
  */
 function showAuthScreen() {
     mainApp.style.display = 'none';
     screenAuth.style.display = 'flex';
     screenAuth.classList.add('active');
+    userMenu.classList.remove('active');
+    closeSettingsOverlay();
+    document.body.style.overflow = '';
 
-    // РћС‡РёС‰Р°РµРј СЃРѕСЃС‚РѕСЏРЅРёРµ
+    // Очищаем состояние
     state.favorites = [];
     state.favoriteIds.clear();
     state.favoriteOrderIds = [];
     state.favoriteDetailsById.clear();
     state.favoriteDetailsInFlight.clear();
     state.favoritesVisibleCount = FAVORITES_PAGE_SIZE;
+    state.likedMovies = [];
+    state.likedIds.clear();
+    state.likedOrderIds = [];
+    state.likedDetailsById.clear();
+    state.likedDetailsInFlight.clear();
+    state.likedVisibleCount = FAVORITES_PAGE_SIZE;
+    state.watchedMovies = [];
+    state.watchedIds.clear();
+    state.watchedOrderIds = [];
+    state.watchedDetailsById.clear();
+    state.watchedDetailsInFlight.clear();
+    state.watchedVisibleCount = FAVORITES_PAGE_SIZE;
+    state.skippedIds.clear();
     state.preferences = {
         categoryWeights: {},
         typeWeights: {},
@@ -565,86 +1304,128 @@ function showAuthScreen() {
         preferredRating: null
     };
     state.selectedCategoryIds.clear();
+    state.selectedCountry = '';
     state.seenMovieIds = new Set();
     state.interactions = createEmptyInteractionsState();
     state.lastShownMovieId = null;
     state.movies = [];
+    state.currentIndex = 0;
+    state.page = 1;
+    state.isPrefetching = false;
+    state.currentTab = 'discover';
     cardStack.innerHTML = '';
-    favGrid.innerHTML = '';
+    if (watchlistGrid) watchlistGrid.innerHTML = '';
+    if (likedGrid) likedGrid.innerHTML = '';
+    if (watchedGrid) watchedGrid.innerHTML = '';
     renderCategoryFilters();
     updateFavBadge();
 }
 
 // ============================================================
-// FIRESTORE вЂ” РР·Р±СЂР°РЅРЅРѕРµ РІ РѕР±Р»Р°РєРµ
+// FIRESTORE — Избранное в облаке
 // ============================================================
 
 /**
- * РџСѓС‚СЊ Рє РєРѕР»Р»РµРєС†РёРё favorites С‚РµРєСѓС‰РµРіРѕ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ:
+ * Путь к документу пользователя:
  * users/{user_id}/favorites/{film_id}
  */
 function getUserDocRef() {
     return doc(db, 'users', state.user.uid);
 }
 
-function toFavoriteMovieFromDetails(id, details) {
-    const genres = normalizeGenres(details.genres || '');
-    const countries = normalizeCountries(details.countries || '');
-    return {
-        id,
-        title: details.title || `Film #${id}`,
-        poster: details.poster || '',
-        posterFull: details.posterFull || details.poster || '',
-        rating: details.rating || null,
-        year: details.year || '',
-        description: details.description || '',
-        genresText: details.genres || '',
-        countriesText: details.countries || '',
-        countries,
-        genres,
-        contentType: inferContentType(details.type || 'FILM', genres)
-    };
+function toMovieFromDetails(id, details) {
+    const normalized = normalizeMovie({
+        ...details,
+        kinopoiskId: id
+    });
+    if (!Number.isFinite(normalized.id)) {
+        normalized.id = Number(id);
+        normalized.kinopoiskId = Number(id);
+    }
+    if (!normalized.title) {
+        normalized.title = `Film #${id}`;
+    }
+    return normalized;
 }
 
-async function readFavoriteIdsFromCloud() {
+async function readMovieStatusesFromCloud() {
     const snapshot = await getDoc(getUserDocRef());
-    if (!snapshot.exists()) return [];
-    const favorites = snapshot.data()?.favorites;
-    if (!Array.isArray(favorites)) return [];
-    return favorites.map((id) => Number(id)).filter((id) => Number.isFinite(id));
+    if (!snapshot.exists()) {
+        return { watchlistIds: [], likedIds: [], watchedIds: [], skippedIds: [] };
+    }
+    const data = snapshot.data() || {};
+    const watchlistLegacy = normalizeIdArray(data.favorites);
+    return resolveStatusConflicts({
+        watchlistIds: [...new Set([...watchlistLegacy, ...normalizeIdArray(data.watchlist)])],
+        likedIds: [...new Set(normalizeIdArray(data.liked))],
+        watchedIds: [...new Set(normalizeIdArray(data.watched))],
+        skippedIds: [...new Set([...normalizeIdArray(data.skipped), ...normalizeIdArray(data.disliked)])]
+    });
 }
 
-async function fetchFavoriteDetailsBatch(ids) {
+async function fetchMovieDetailsBatch(ids) {
     const detailsList = await Promise.all(ids.map(async (id) => {
         const details = await fetchMovieDetails(id);
         if (!details) return null;
-        return toFavoriteMovieFromDetails(id, details);
+        return toMovieFromDetails(id, details);
     }));
     return detailsList.filter(Boolean);
 }
 
-async function ensureFavoriteDetailsForVisible() {
-    const visibleIds = state.favoriteOrderIds.slice(0, state.favoritesVisibleCount);
+async function ensureDetailsForVisible(visibleIds, detailsById, detailsInFlight, upsertFn, saveCacheFn) {
     const missingIds = visibleIds.filter(
-        (id) => !state.favoriteDetailsById.has(id) && !state.favoriteDetailsInFlight.has(id)
+        (id) => !detailsById.has(id) && !detailsInFlight.has(id)
     );
 
     if (missingIds.length === 0) return;
 
-    missingIds.forEach((id) => state.favoriteDetailsInFlight.add(id));
+    missingIds.forEach((id) => detailsInFlight.add(id));
     try {
-        const movies = await fetchFavoriteDetailsBatch(missingIds);
-        movies.forEach((movie) => upsertFavoriteDetail(movie));
+        const movies = await fetchMovieDetailsBatch(missingIds);
+        movies.forEach((movie) => upsertFn(movie));
         applyFavoritesState();
-        saveFavoritesCache();
+        saveCacheFn();
     } finally {
-        missingIds.forEach((id) => state.favoriteDetailsInFlight.delete(id));
+        missingIds.forEach((id) => detailsInFlight.delete(id));
     }
 }
 
-function renderFavoritesSkeleton(count = FAVORITES_PAGE_SIZE) {
-    favGrid.innerHTML = '';
-    emptyFavs.style.display = 'none';
+async function ensureFavoriteDetailsForVisible() {
+    const visibleIds = state.favoriteOrderIds.slice(0, state.favoritesVisibleCount);
+    await ensureDetailsForVisible(
+        visibleIds,
+        state.favoriteDetailsById,
+        state.favoriteDetailsInFlight,
+        upsertFavoriteDetail,
+        saveFavoritesCache
+    );
+}
+
+async function ensureLikedDetailsForVisible() {
+    const visibleIds = state.likedOrderIds.slice(0, state.likedVisibleCount);
+    await ensureDetailsForVisible(
+        visibleIds,
+        state.likedDetailsById,
+        state.likedDetailsInFlight,
+        upsertLikedDetail,
+        saveLikedCache
+    );
+}
+
+async function ensureWatchedDetailsForVisible() {
+    const visibleIds = state.watchedOrderIds.slice(0, state.watchedVisibleCount);
+    await ensureDetailsForVisible(
+        visibleIds,
+        state.watchedDetailsById,
+        state.watchedDetailsInFlight,
+        upsertWatchedDetail,
+        saveWatchedCache
+    );
+}
+
+function renderListSkeleton(grid, count = FAVORITES_PAGE_SIZE) {
+    if (!grid) return;
+    grid.innerHTML = '';
     for (let i = 0; i < count; i++) {
         const card = document.createElement('div');
         card.className = 'fav-card skeleton';
@@ -655,98 +1436,354 @@ function renderFavoritesSkeleton(count = FAVORITES_PAGE_SIZE) {
                 <div class="skeleton-line short"></div>
             </div>
         `;
-        favGrid.appendChild(card);
+        grid.appendChild(card);
     }
 }
 
-async function saveToFirestore(movie) {
-    if (!state.user) return;
-    const movieId = Number(movie?.id);
-    if (!Number.isFinite(movieId)) {
-        console.warn('Skip Firestore save: invalid movie id', movie?.id);
-        return;
-    }
-    try {
-        await setDoc(getUserDocRef(), {
-            favorites: arrayUnion(movieId)
-        }, { merge: true });
-        console.log('Favorites synced (+):', movieId);
-    } catch (err) {
-        console.error('Firestore write failed:', err);
-    }
+function renderFavoritesSkeleton(count = 4) {
+    emptyFavs.style.display = 'none';
+    if (watchlistSection) watchlistSection.style.display = '';
+    if (likedSection) likedSection.style.display = '';
+    if (watchedSection) watchedSection.style.display = '';
+    renderListSkeleton(watchlistGrid, count);
+    renderListSkeleton(likedGrid, count);
+    renderListSkeleton(watchedGrid, count);
 }
 
-async function deleteFromFirestore(movieId) {
-    if (!state.user) return;
-    const normalizedId = Number(movieId);
-    if (!Number.isFinite(normalizedId)) {
-        console.warn('Skip Firestore delete: invalid movie id', movieId);
-        return;
-    }
-    try {
-        await setDoc(getUserDocRef(), {
-            favorites: arrayRemove(normalizedId)
-        }, { merge: true });
-        console.log('Favorites synced (-):', normalizedId);
-    } catch (err) {
-        console.error('Firestore delete failed:', err);
-    }
+function removeFromWatchlistLocal(movieId) {
+    if (!Number.isFinite(movieId)) return;
+    state.favoriteIds.delete(movieId);
+    state.favoriteOrderIds = state.favoriteOrderIds.filter((id) => id !== movieId);
+    state.favoriteDetailsById.delete(movieId);
+    syncFavoritesArray();
 }
 
-async function loadFavoritesFromFirestore() {
+function removeFromLikedLocal(movieId) {
+    if (!Number.isFinite(movieId)) return;
+    state.likedIds.delete(movieId);
+    state.likedOrderIds = state.likedOrderIds.filter((id) => id !== movieId);
+    state.likedDetailsById.delete(movieId);
+    state.interactions.likedMovieIds.delete(movieId);
+    syncLikedArray();
+}
+
+function removeFromWatchedLocal(movieId) {
+    if (!Number.isFinite(movieId)) return;
+    state.watchedIds.delete(movieId);
+    state.watchedOrderIds = state.watchedOrderIds.filter((id) => id !== movieId);
+    state.watchedDetailsById.delete(movieId);
+    syncWatchedArray();
+}
+
+function removeFromSkippedLocal(movieId) {
+    if (!Number.isFinite(movieId)) return;
+    state.skippedIds.delete(movieId);
+    state.interactions.dislikedMovieIds.delete(movieId);
+}
+
+function removeMovieFromAllLocalStatuses(movieId) {
+    removeFromWatchlistLocal(movieId);
+    removeFromLikedLocal(movieId);
+    removeFromWatchedLocal(movieId);
+    removeFromSkippedLocal(movieId);
+}
+
+function addToWatchlistLocal(movie) {
+    if (!movie || !Number.isFinite(movie.id)) return;
+    state.favoriteIds.add(movie.id);
+    state.favoriteOrderIds = [movie.id, ...state.favoriteOrderIds.filter((id) => id !== movie.id)];
+    upsertFavoriteDetail(movie);
+    state.favoritesVisibleCount = Math.max(state.favoritesVisibleCount, FAVORITES_PAGE_SIZE);
+    state.interactions.likedMovieIds.delete(movie.id);
+    state.interactions.dislikedMovieIds.delete(movie.id);
+}
+
+function addToLikedLocal(movie) {
+    if (!movie || !Number.isFinite(movie.id)) return;
+    state.likedIds.add(movie.id);
+    state.likedOrderIds = [movie.id, ...state.likedOrderIds.filter((id) => id !== movie.id)];
+    upsertLikedDetail(movie);
+    state.likedVisibleCount = Math.max(state.likedVisibleCount, FAVORITES_PAGE_SIZE);
+    markMovieLiked(movie.id);
+}
+
+function addToWatchedLocal(movie) {
+    if (!movie || !Number.isFinite(movie.id)) return;
+    state.watchedIds.add(movie.id);
+    state.watchedOrderIds = [movie.id, ...state.watchedOrderIds.filter((id) => id !== movie.id)];
+    upsertWatchedDetail(movie);
+    state.watchedVisibleCount = Math.max(state.watchedVisibleCount, FAVORITES_PAGE_SIZE);
+    state.interactions.likedMovieIds.delete(movie.id);
+    state.interactions.dislikedMovieIds.delete(movie.id);
+}
+
+function addToSkippedLocal(movie) {
+    if (!movie || !Number.isFinite(movie.id)) return;
+    state.skippedIds.add(movie.id);
+    markMovieDisliked(movie.id);
+}
+
+function saveAllStatusCaches() {
+    saveFavoritesCache();
+    saveLikedCache();
+    saveWatchedCache();
+    saveSkippedCache();
+    saveInteractionsCache();
+}
+
+let statusCloudSyncInFlight = null;
+let statusCloudSyncUid = null;
+
+function hasAnyStatuses(statuses) {
+    if (!statuses || typeof statuses !== 'object') return false;
+    return (Array.isArray(statuses.watchlistIds) && statuses.watchlistIds.length > 0)
+        || (Array.isArray(statuses.likedIds) && statuses.likedIds.length > 0)
+        || (Array.isArray(statuses.watchedIds) && statuses.watchedIds.length > 0)
+        || (Array.isArray(statuses.skippedIds) && statuses.skippedIds.length > 0);
+}
+
+function getCurrentStatusSnapshot() {
+    return resolveStatusConflicts({
+        watchlistIds: [...state.favoriteOrderIds],
+        likedIds: [...state.likedOrderIds],
+        watchedIds: [...state.watchedOrderIds],
+        skippedIds: [...state.skippedIds]
+    });
+}
+
+function applyCloudStatusesToLocalState(statuses) {
+    const resolved = resolveStatusConflicts(statuses);
+    applyFavoritesIds(resolved.watchlistIds);
+    applyLikedIds(resolved.likedIds);
+    applyWatchedIds(resolved.watchedIds);
+    state.skippedIds = new Set(resolved.skippedIds);
+
+    const watchlistPruned = new Map();
+    resolved.watchlistIds.forEach((id) => {
+        const movie = state.favoriteDetailsById.get(id);
+        if (movie) watchlistPruned.set(id, movie);
+    });
+    state.favoriteDetailsById = watchlistPruned;
+    syncFavoritesArray();
+
+    const likedPruned = new Map();
+    resolved.likedIds.forEach((id) => {
+        const movie = state.likedDetailsById.get(id);
+        if (movie) likedPruned.set(id, movie);
+    });
+    state.likedDetailsById = likedPruned;
+    syncLikedArray();
+
+    const watchedPruned = new Map();
+    resolved.watchedIds.forEach((id) => {
+        const movie = state.watchedDetailsById.get(id);
+        if (movie) watchedPruned.set(id, movie);
+    });
+    state.watchedDetailsById = watchedPruned;
+    syncWatchedArray();
+}
+
+async function pushStatusesSnapshotToCloud(statuses) {
     if (!state.user) return;
+    const resolved = resolveStatusConflicts(statuses);
+    const payload = {
+        watchlist: resolved.watchlistIds,
+        favorites: resolved.watchlistIds,
+        liked: resolved.likedIds,
+        watched: resolved.watchedIds,
+        skipped: resolved.skippedIds,
+        disliked: resolved.skippedIds
+    };
+    await setDoc(getUserDocRef(), payload, { merge: true });
+}
 
-    const cached = loadFavoritesCache();
-    applyFavoritesIds(cached.ids);
-    applyFavoriteDetails(cached.details);
-    state.favoritesVisibleCount = FAVORITES_PAGE_SIZE;
-    favLoader.style.display = 'none';
+async function syncStatusesFromCloud(options = {}) {
+    const {
+        bootstrapLocalToCloudWhenEmpty = true
+    } = options;
 
-    if (state.favoriteOrderIds.length > 0) {
-        applyFavoritesState();
-        ensureFavoriteDetailsForVisible();
-    } else {
-        renderFavoritesSkeleton();
+    if (!state.user) return { source: 'no-user' };
+    const uid = state.user.uid;
+
+    if (statusCloudSyncInFlight && statusCloudSyncUid === uid) {
+        return statusCloudSyncInFlight;
     }
 
-    try {
-        const ids = await Promise.race([
-            readFavoriteIdsFromCloud(),
+    statusCloudSyncUid = uid;
+    statusCloudSyncInFlight = (async () => {
+        const localSnapshot = getCurrentStatusSnapshot();
+        const cloudStatuses = await Promise.race([
+            readMovieStatusesFromCloud(),
             new Promise((_, reject) => {
                 setTimeout(() => reject(new Error('Firestore timeout')), FIRESTORE_TIMEOUT_MS);
             })
         ]);
 
-        applyFavoritesIds(ids);
-        const pruned = new Map();
-        ids.forEach((id) => {
-            const movie = state.favoriteDetailsById.get(id);
-            if (movie) pruned.set(id, movie);
-        });
-        state.favoriteDetailsById = pruned;
+        if (!state.user || state.user.uid !== uid) {
+            return { source: 'stale-session' };
+        }
 
-        if (ids.length === 0) {
-            state.preferences = {
-                categoryWeights: {},
-                typeWeights: {},
-                countryWeights: {},
-                keywordWeights: {},
-                preferredYear: null,
-                preferredRating: null
-            };
+        const resolvedCloudStatuses = resolveStatusConflicts(cloudStatuses);
+        const cloudHasData = hasAnyStatuses(resolvedCloudStatuses);
+        const localHasData = hasAnyStatuses(localSnapshot);
+
+        if (cloudHasData) {
+            applyCloudStatusesToLocalState(resolvedCloudStatuses);
+            saveAllStatusCaches();
             applyFavoritesState();
-            saveFavoritesCache();
-            emptyFavs.style.display = '';
+            return { source: 'cloud' };
+        }
+
+        if (bootstrapLocalToCloudWhenEmpty && localHasData) {
+            await pushStatusesSnapshotToCloud(localSnapshot);
+            saveAllStatusCaches();
+            applyFavoritesState();
+            return { source: 'local-bootstrapped' };
+        }
+
+        applyCloudStatusesToLocalState(resolvedCloudStatuses);
+        saveAllStatusCaches();
+        applyFavoritesState();
+        return { source: 'empty' };
+    })();
+
+    try {
+        return await statusCloudSyncInFlight;
+    } finally {
+        if (statusCloudSyncUid === uid) {
+            statusCloudSyncInFlight = null;
+            statusCloudSyncUid = null;
+        }
+    }
+}
+
+async function syncStatusToFirestore(movieId, status) {
+    if (!state.user) return;
+    if (!Number.isFinite(movieId)) return;
+    const payload = {
+        watchlist: status === 'watchlist' ? arrayUnion(movieId) : arrayRemove(movieId),
+        favorites: status === 'watchlist' ? arrayUnion(movieId) : arrayRemove(movieId),
+        liked: status === 'liked' ? arrayUnion(movieId) : arrayRemove(movieId),
+        watched: status === 'watched' ? arrayUnion(movieId) : arrayRemove(movieId),
+        skipped: status === 'skipped' ? arrayUnion(movieId) : arrayRemove(movieId),
+        disliked: status === 'skipped' ? arrayUnion(movieId) : arrayRemove(movieId)
+    };
+    try {
+        await setDoc(getUserDocRef(), payload, { merge: true });
+    } catch (err) {
+        console.error('Firestore write failed:', err);
+    }
+}
+
+async function removeStatusFromFirestore(movieId, status) {
+    if (!state.user) return;
+    if (!Number.isFinite(movieId)) return;
+    let payload = {};
+    if (status === 'watchlist') {
+        payload = { watchlist: arrayRemove(movieId), favorites: arrayRemove(movieId) };
+    } else if (status === 'liked') {
+        payload = { liked: arrayRemove(movieId) };
+    } else if (status === 'watched') {
+        payload = { watched: arrayRemove(movieId) };
+    } else if (status === 'skipped') {
+        payload = { skipped: arrayRemove(movieId), disliked: arrayRemove(movieId) };
+    } else {
+        return;
+    }
+    try {
+        await setDoc(getUserDocRef(), payload, { merge: true });
+    } catch (err) {
+        console.error('Firestore delete failed:', err);
+    }
+}
+
+function setMovieStatusLocally(movie, status) {
+    if (!movie || !Number.isFinite(movie.id)) return;
+    removeMovieFromAllLocalStatuses(movie.id);
+    if (status === 'watchlist') {
+        addToWatchlistLocal(movie);
+    } else if (status === 'liked') {
+        addToLikedLocal(movie);
+    } else if (status === 'watched') {
+        addToWatchedLocal(movie);
+    } else if (status === 'skipped') {
+        addToSkippedLocal(movie);
+    }
+    markMovieAsSeen(movie.id);
+    saveAllStatusCaches();
+    applyFavoritesState();
+}
+
+function removeMovieFromStatusLocally(movieId, status) {
+    const normalizedId = Number(movieId);
+    if (!Number.isFinite(normalizedId)) return;
+    if (status === 'watchlist') {
+        removeFromWatchlistLocal(normalizedId);
+    } else if (status === 'liked') {
+        removeFromLikedLocal(normalizedId);
+    } else if (status === 'watched') {
+        removeFromWatchedLocal(normalizedId);
+    } else if (status === 'skipped') {
+        removeFromSkippedLocal(normalizedId);
+    }
+    saveAllStatusCaches();
+    applyFavoritesState();
+}
+
+async function loadFavoritesFromFirestore() {
+    if (!state.user) return;
+
+    const watchlistCache = loadFavoritesCache();
+    const likedCache = loadLikedCache();
+    const watchedCache = loadWatchedCache();
+    const resolvedCacheStatuses = resolveStatusConflicts({
+        watchlistIds: watchlistCache.ids,
+        likedIds: likedCache.ids,
+        watchedIds: watchedCache.ids,
+        skippedIds: [...loadSkippedCache()]
+    });
+    applyFavoritesIds(resolvedCacheStatuses.watchlistIds);
+    applyFavoriteDetails(watchlistCache.details);
+    state.favoritesVisibleCount = FAVORITES_PAGE_SIZE;
+    applyLikedIds(resolvedCacheStatuses.likedIds);
+    applyLikedDetails(likedCache.details);
+    state.likedVisibleCount = FAVORITES_PAGE_SIZE;
+    applyWatchedIds(resolvedCacheStatuses.watchedIds);
+    applyWatchedDetails(watchedCache.details);
+    state.watchedVisibleCount = FAVORITES_PAGE_SIZE;
+    state.skippedIds = new Set(resolvedCacheStatuses.skippedIds);
+    favLoader.style.display = 'none';
+
+    const hasLocalStatuses = state.favoriteOrderIds.length > 0 || state.likedOrderIds.length > 0 || state.watchedOrderIds.length > 0;
+    if (hasLocalStatuses) {
+        applyFavoritesState();
+        ensureFavoriteDetailsForVisible();
+        ensureLikedDetailsForVisible();
+        ensureWatchedDetailsForVisible();
+    } else {
+        renderFavoritesSkeleton();
+    }
+
+    try {
+        await syncStatusesFromCloud({ bootstrapLocalToCloudWhenEmpty: true });
+
+        if (state.favoriteOrderIds.length === 0 &&
+            state.likedOrderIds.length === 0 &&
+            state.watchedOrderIds.length === 0) {
+            renderFavorites();
             return;
         }
 
         applyFavoritesState();
-        saveFavoritesCache();
         ensureFavoriteDetailsForVisible();
+        ensureLikedDetailsForVisible();
+        ensureWatchedDetailsForVisible();
     } catch (err) {
         console.error('Firestore favorites load failed:', err);
-        if (state.favoriteOrderIds.length === 0) {
-            emptyFavs.style.display = '';
+        if (state.favoriteOrderIds.length === 0 &&
+            state.likedOrderIds.length === 0 &&
+            state.watchedOrderIds.length === 0) {
+            renderFavorites();
         }
     }
 }
@@ -768,6 +1805,96 @@ function normalizeCountries(source) {
         return source.split(',').map((item) => item.trim()).filter(Boolean);
     }
     return [];
+}
+
+function parseRatingValue(rawValue) {
+    if (rawValue === null || rawValue === undefined || rawValue === '') return null;
+    const normalized = String(rawValue).trim().replace(',', '.');
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : null;
+}
+
+function formatRatingValue(rating) {
+    if (!Number.isFinite(rating)) return '';
+    const rounded = Math.round(rating * 10) / 10;
+    return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}
+
+function buildRatingLabel(ratingKinopoisk, ratingImdb) {
+    const parts = [];
+    if (Number.isFinite(ratingKinopoisk)) {
+        parts.push(`KP ${formatRatingValue(ratingKinopoisk)}`);
+    }
+    if (Number.isFinite(ratingImdb)) {
+        parts.push(`IMDb ${formatRatingValue(ratingImdb)}`);
+    }
+    return parts.join(' • ');
+}
+
+function normalizeAgeLimits(rawValue) {
+    if (!rawValue && rawValue !== 0) return '';
+    const digits = String(rawValue).match(/\d+/);
+    if (!digits) return '';
+    return `${digits[0]}+`;
+}
+
+function getMovieRatingText(movie) {
+    if (!movie) return '';
+    if (typeof movie.ratingLabel === 'string' && movie.ratingLabel.trim()) {
+        return movie.ratingLabel.trim();
+    }
+    const rating = parseRatingValue(movie.rating);
+    return Number.isFinite(rating) ? `KP ${formatRatingValue(rating)}` : '';
+}
+
+function getMovieMetaText(movie) {
+    if (!movie) return '';
+    const genres = movie.genresText || (Array.isArray(movie.genres) ? movie.genres.join(', ') : '');
+    const metaParts = [genres, movie.ratingAgeLimits || ''].filter(Boolean);
+    return metaParts.join(' • ');
+}
+
+function countryNameToIsoCode(countryName) {
+    const normalized = (countryName || '')
+        .toString()
+        .trim()
+        .toLowerCase()
+        .replace(/\./g, '');
+    return COUNTRY_CODE_BY_NAME[normalized] || null;
+}
+
+function isoToFlagEmoji(isoCode) {
+    if (!isoCode || isoCode.length !== 2) return '';
+    const upper = isoCode.toUpperCase();
+    const a = upper.charCodeAt(0);
+    const b = upper.charCodeAt(1);
+    if (a < 65 || a > 90 || b < 65 || b > 90) return '';
+    return String.fromCodePoint(127397 + a, 127397 + b);
+}
+
+function getPrimaryCountryName(movie) {
+    if (Array.isArray(movie.countries) && movie.countries.length > 0) {
+        return movie.countries[0];
+    }
+    if (typeof movie.countriesText === 'string' && movie.countriesText.trim()) {
+        return movie.countriesText.split(',')[0].trim();
+    }
+    return '';
+}
+
+function formatCountryWithFlag(movie) {
+    const country = getPrimaryCountryName(movie);
+    if (!country) return '';
+    const iso = countryNameToIsoCode(country);
+    const flag = isoToFlagEmoji(iso);
+    return flag ? `${flag} ${country}` : country;
+}
+
+function setPopupMetaChip(node, value) {
+    if (!node) return;
+    const safe = (value || '').toString().trim();
+    node.textContent = safe;
+    node.style.display = safe ? '' : 'none';
 }
 
 function inferContentType(rawType, genres) {
@@ -802,12 +1929,30 @@ function normalizeMovie(film) {
     const genres = normalizeGenres(film.genres || []);
     const countries = normalizeCountries(film.countries || []);
     const contentType = inferContentType(film.type, genres);
+    const kinopoiskId = Number(film.kinopoiskId || film.filmId || film.id);
+    const normalizedKinopoiskId = Number.isFinite(kinopoiskId) ? kinopoiskId : null;
+    const ratingKinopoisk = parseRatingValue(film.ratingKinopoisk || film.rating);
+    const ratingImdb = parseRatingValue(film.ratingImdb);
+    const ratingLabel = buildRatingLabel(ratingKinopoisk, ratingImdb);
+    const title = film.nameRu || film.nameEn || film.nameOriginal || film.title || '\u0411\u0435\u0437 \u043d\u0430\u0437\u0432\u0430\u043d\u0438\u044f';
+    const posterUrl = film.posterUrl || film.posterFull || film.posterUrlPreview || film.poster || '';
+    const posterUrlPreview = film.posterUrlPreview || film.posterUrl || film.poster || '';
     const normalized = {
-        id: film.kinopoiskId || film.filmId || film.id,
-        title: film.nameRu || film.nameEn || film.title || '\u0411\u0435\u0437 \u043d\u0430\u0437\u0432\u0430\u043d\u0438\u044f',
-        poster: film.posterUrlPreview || film.posterUrl || film.poster || '',
-        posterFull: film.posterUrl || film.posterUrlPreview || film.posterFull || '',
-        rating: film.ratingKinopoisk || film.rating || null,
+        id: normalizedKinopoiskId,
+        kinopoiskId: normalizedKinopoiskId,
+        nameRu: film.nameRu || '',
+        nameEn: film.nameEn || '',
+        nameOriginal: film.nameOriginal || '',
+        title,
+        posterUrl,
+        posterUrlPreview,
+        poster: posterUrlPreview,
+        posterFull: posterUrl,
+        ratingKinopoisk,
+        ratingImdb,
+        ratingAgeLimits: normalizeAgeLimits(film.ratingAgeLimits),
+        ratingLabel,
+        rating: ratingKinopoisk ?? ratingImdb,
         year: film.year || '',
         description: film.description || film.shortDescription || '\u041e\u043f\u0438\u0441\u0430\u043d\u0438\u0435 \u043e\u0442\u0441\u0443\u0442\u0441\u0442\u0432\u0443\u0435\u0442',
         genres,
@@ -847,6 +1992,7 @@ function computePreferences() {
 
     const positives = [
         ...state.favorites,
+        ...state.likedMovies,
         ...state.movies.filter((movie) => state.interactions.likedMovieIds.has(movie.id))
     ];
     const uniquePositives = new Map();
@@ -939,6 +2085,8 @@ function getCountryMatchScore(movie) {
 function getPersonalPenalty(movie) {
     let penalty = 0;
     if (state.favoriteIds.has(movie.id)) penalty += 600;
+    if (state.likedIds.has(movie.id)) penalty += 600;
+    if (state.skippedIds.has(movie.id)) penalty += 700;
     if (state.seenMovieIds.has(movie.id)) penalty += 450;
     if (state.interactions.dislikedMovieIds.has(movie.id)) penalty += 220;
     if (state.interactions.likedMovieIds.has(movie.id)) penalty -= 90;
@@ -985,6 +2133,17 @@ function scoreMovie(movie) {
     normalizedMovie.categoryIds.forEach((categoryId) => {
         score += (state.preferences.categoryWeights[categoryId] || 0) * 46;
     });
+
+    if (normalizeSelectedCountryValue(state.selectedCountry)) {
+        if (movieMatchesSelectedCountry(normalizedMovie)) {
+            score += 170;
+        } else if (normalizedMovie.countries.length > 0) {
+            score -= 80;
+        } else {
+            score -= 20;
+        }
+    }
+
     score += (state.preferences.typeWeights[normalizedMovie.contentType] || 0) * 24;
     score += getCountryMatchScore(normalizedMovie);
     score += getKeywordMatchScore(normalizedMovie);
@@ -1064,6 +2223,9 @@ function sortColdStartMovies(movies) {
 function renderCategoryFilters() {
     if (!moodFilters) return;
 
+    // Country filter section is disabled in UI.
+    state.selectedCountry = '';
+
     const selected = [...state.selectedCategoryIds];
     const selectedSet = new Set(selected);
     const nonSelected = state.allCategories.filter((category) => !selectedSet.has(category.id) && category.id !== 'all');
@@ -1073,7 +2235,9 @@ function renderCategoryFilters() {
         ...nonSelected
     ].filter(Boolean);
 
+    state.selectedCountry = normalizeSelectedCountryValue(state.selectedCountry);
     moodFilters.innerHTML = '';
+
     sorted.forEach((category) => {
         const button = document.createElement('button');
         button.className = 'mood-tag';
@@ -1092,6 +2256,59 @@ function renderCategoryFilters() {
         button.addEventListener('click', () => toggleCategory(category.id));
         moodFilters.appendChild(button);
     });
+}
+
+function closeCountryPicker() {
+    if (!countryPickerOverlay) return;
+    countryPickerOverlay.classList.remove('active');
+    document.body.style.overflow = '';
+}
+
+function selectCountry(countryName) {
+    const normalized = normalizeSelectedCountryValue(countryName);
+    state.selectedCountry = normalized;
+    closeCountryPicker();
+    state.page = 1;
+    renderCategoryFilters();
+    loadMovies();
+}
+
+function renderCountryPickerList() {
+    if (!countryPickerList) return;
+    const selectedCountry = normalizeTextForCompare(state.selectedCountry);
+    countryPickerList.innerHTML = '';
+
+    const resetBtn = document.createElement('button');
+    resetBtn.type = 'button';
+    resetBtn.className = 'country-item';
+    if (!selectedCountry) resetBtn.classList.add('selected');
+    resetBtn.innerHTML = `
+        <span class="country-flag">🌍</span>
+        <span class="country-name">Любая страна</span>
+    `;
+    resetBtn.addEventListener('click', () => selectCountry(''));
+    countryPickerList.appendChild(resetBtn);
+
+    COUNTRY_FILTER_OPTIONS.forEach((country) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'country-item';
+        const isSelected = normalizeTextForCompare(country.name) === selectedCountry;
+        if (isSelected) btn.classList.add('selected');
+        btn.innerHTML = `
+            <span class="country-flag">${country.flag}</span>
+            <span class="country-name">${country.name}</span>
+        `;
+        btn.addEventListener('click', () => selectCountry(country.name));
+        countryPickerList.appendChild(btn);
+    });
+}
+
+function openCountryPicker() {
+    if (!countryPickerOverlay) return;
+    renderCountryPickerList();
+    countryPickerOverlay.classList.add('active');
+    document.body.style.overflow = 'hidden';
 }
 
 function getPreferredContentType() {
@@ -1113,12 +2330,24 @@ function getCategoryQueryValue(categoryIds = state.selectedCategoryIds) {
     return selected.length > 0 ? selected.join(',') : 'all';
 }
 
+function getReadableMovieLoadError(error) {
+    const raw = (error?.message || '').toString().trim();
+    if (!raw) {
+        return 'Не удалось загрузить фильмы. Попробуйте снова чуть позже.';
+    }
+    const networkHints = ['Failed to fetch', 'NetworkError', 'Load failed', 'Network request failed'];
+    if (networkHints.some((hint) => raw.includes(hint))) {
+        return 'Сервер фильмов недоступен. Проверьте интернет и повторите попытку.';
+    }
+    return raw;
+}
+
 /**
- * Р—Р°РіСЂСѓР¶Р°РµС‚ СЃРїРёСЃРѕРє С„РёР»СЊРјРѕРІ СЃ СѓС‡РµС‚РѕРј РІС‹Р±СЂР°РЅРЅС‹С… РєР°С‚РµРіРѕСЂРёР№.
+ * Загружает список фильмов с учетом выбранных категорий.
  */
 async function fetchMovies(options = 1) {
     const page = typeof options === 'number' ? options : (options?.page || 1);
-    const limit = options?.limit || 24;
+    const limit = options?.limit || 40;
     const categories = options?.categories
         ? getCategoryQueryValue(options.categories)
         : getCategoryQueryValue();
@@ -1132,20 +2361,39 @@ async function fetchMovies(options = 1) {
         categories,
         content_type: contentType
     });
-    const url = `${BACKEND_API_BASE}/api/movies?${query.toString()}`;
-
-    const response = await fetch(url, {
-        method: 'GET'
+    const requestUrl = `${BACKEND_API_BASE}/api/movies?${query.toString()}`;
+    const response = await fetch(requestUrl, {
+        method: 'GET',
+        headers: {
+            Accept: 'application/json'
+        },
+        cache: 'no-store'
     });
 
+    if (response.status === 404) {
+        throw new Error('Oracle backend не обновлён: отсутствует endpoint /api/movies');
+    }
+
+    if (response.status === 503) {
+        throw new Error('На backend не настроен KINOPOISK_API_KEY');
+    }
+
+    if (response.status === 502 || response.status === 504) {
+        throw new Error('Сервер фильмов временно недоступен. Попробуйте позже.');
+    }
+
     if (!response.ok) {
-        throw new Error(`\u041e\u0448\u0438\u0431\u043a\u0430 API: ${response.status} ${response.statusText}`);
+        throw new Error(`Ошибка сервера: ${response.status} ${response.statusText}`);
     }
 
     const data = await response.json();
-    const rawFilms = data.items || data.films || [];
+    if (!Array.isArray(data.items)) {
+        throw new Error('Некорректный ответ сервера: отсутствует массив items');
+    }
 
-    return rawFilms.map(normalizeMovie);
+    return data.items
+        .map(normalizeMovie)
+        .filter((movie) => Number.isFinite(movie.id));
 }
 
 function mergeUniqueMovies(list) {
@@ -1166,17 +2414,18 @@ function pickRandomCategoryId() {
 }
 
 function buildFetchPlans(basePage) {
-    const plans = [{ page: basePage, limit: 24 }];
-    if (state.selectedCategoryIds.size === 0) {
-        plans.push({ page: basePage + 1, limit: 18 });
+    if (state.selectedCountry) {
+        return [{ page: basePage, limit: 40 }];
     }
+
+    const plans = [{ page: basePage, limit: 40 }];
 
     if (!hasUserPreferenceSignals() && state.selectedCategoryIds.size === 0) {
         const randomCategory = pickRandomCategoryId();
-        if (randomCategory) {
+        if (randomCategory && Math.random() < 0.35) {
             plans.push({
                 page: basePage,
-                limit: 12,
+                limit: 40,
                 categories: [randomCategory]
             });
         }
@@ -1187,42 +2436,482 @@ function buildFetchPlans(basePage) {
 async function fetchCandidateMovies(basePage) {
     const plans = buildFetchPlans(basePage);
     const results = await Promise.all(
-        plans.map((plan) => fetchMovies(plan).catch(() => []))
+        plans.map(async (plan) => {
+            try {
+                const items = await fetchMovies(plan);
+                return { ok: true, items };
+            } catch (error) {
+                console.error('Ошибка загрузки плана фильмов:', plan, error);
+                return { ok: false, items: [], error };
+            }
+        })
     );
-    return mergeUniqueMovies(results.flat());
+
+    const successful = results.filter((result) => result.ok);
+    if (successful.length === 0) {
+        const firstError = results.find((result) => result.error)?.error;
+        throw firstError || new Error('Сервер временно недоступен');
+    }
+
+    return mergeUniqueMovies(successful.flatMap((result) => result.items));
 }
 
 /**
- * Р—Р°РіСЂСѓР¶Р°РµС‚ РґРµС‚Р°Р»СЊРЅСѓСЋ РёРЅС„РѕСЂРјР°С†РёСЋ Рѕ С„РёР»СЊРјРµ.
+ * Загружает детальную информацию о фильме.
  */
 async function fetchMovieDetails(filmId) {
     try {
-        const url = `${BACKEND_API_BASE}/api/movies/${filmId}`;
+        const normalizedFilmId = Number(filmId);
+        if (!Number.isFinite(normalizedFilmId)) return null;
+        const url = `${BACKEND_API_BASE}/api/movies/${normalizedFilmId}`;
         const response = await fetch(url, {
-            method: 'GET'
+            method: 'GET',
+            headers: {
+                Accept: 'application/json'
+            },
+            cache: 'no-store'
         });
 
         if (!response.ok) return null;
         const data = await response.json();
-
-        return {
-            title: data.nameRu || data.nameEn || null,
-            description: data.description || data.shortDescription || '\u041e\u043f\u0438\u0441\u0430\u043d\u0438\u0435 \u043e\u0442\u0441\u0443\u0442\u0441\u0442\u0432\u0443\u0435\u0442',
-            genres: (data.genres || []).map(g => g.genre).join(', '),
-            countries: (data.countries || []).map((c) => c.country).join(', '),
-            year: data.year || '',
-            rating: data.ratingKinopoisk || null,
-            poster: data.posterUrlPreview || '',
-            posterFull: data.posterUrl || ''
-        };
+        const normalized = normalizeMovie({
+            ...data,
+            kinopoiskId: normalizedFilmId
+        });
+        if (!Number.isFinite(normalized.id)) {
+            normalized.id = normalizedFilmId;
+            normalized.kinopoiskId = normalizedFilmId;
+        }
+        return normalized;
     } catch {
         return null;
     }
 }
 
+const trailersCache = new Map();
+let currentTrailerRequestId = 0;
+
+async function fetchMovieTrailers(filmId) {
+    const normalizedFilmId = Number(filmId);
+    if (!Number.isFinite(normalizedFilmId)) return [];
+    if (trailersCache.has(normalizedFilmId)) {
+        return trailersCache.get(normalizedFilmId);
+    }
+    try {
+        const url = `${BACKEND_API_BASE}/api/movies/${normalizedFilmId}/videos`;
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+            cache: 'no-store'
+        });
+        if (!response.ok) {
+            trailersCache.set(normalizedFilmId, []);
+            return [];
+        }
+        const data = await response.json();
+        const items = Array.isArray(data?.items) ? data.items : [];
+        trailersCache.set(normalizedFilmId, items);
+        return items;
+    } catch {
+        trailersCache.set(normalizedFilmId, []);
+        return [];
+    }
+}
+
+function extractYouTubeId(rawUrl) {
+    const url = (rawUrl || '').toString().trim();
+    if (!url) return '';
+    const patterns = [
+        /(?:youtube\.com\/embed\/)([A-Za-z0-9_-]{6,})/i,
+        /(?:youtube\.com\/watch\?[^#]*\bv=)([A-Za-z0-9_-]{6,})/i,
+        /(?:youtu\.be\/)([A-Za-z0-9_-]{6,})/i,
+        /(?:youtube\.com\/shorts\/)([A-Za-z0-9_-]{6,})/i
+    ];
+    for (const pattern of patterns) {
+        const match = url.match(pattern);
+        if (match && match[1]) return match[1];
+    }
+    return '';
+}
+
+function pickPreferredTrailer(trailers) {
+    if (!Array.isArray(trailers) || trailers.length === 0) return null;
+    return trailers.find((item) => buildEmbedUrl(item)) || null;
+}
+
+function openExternalTrailerUrl(url) {
+    if (!url) return;
+    try {
+        if (window.AndroidAds && typeof window.AndroidAds.openExternalUrl === 'function') {
+            window.AndroidAds.openExternalUrl(url);
+            return;
+        }
+    } catch (error) {
+        console.warn('Android openExternalUrl bridge error:', error);
+    }
+    window.open(url, '_blank', 'noopener,noreferrer');
+}
+
+function buildEmbedUrl(trailer) {
+    const rawUrl = (trailer?.url || '').toString().trim();
+    if (!rawUrl) return '';
+    const youtubeId = extractYouTubeId(rawUrl);
+    if (youtubeId) {
+        return `https://www.youtube-nocookie.com/embed/${encodeURIComponent(youtubeId)}?autoplay=1&playsinline=1&rel=0&modestbranding=1`;
+    }
+    // Kinopoisk own widget: https://widgets.kinopoisk.ru/discovery/trailer/{id}?...
+    // Iframe-embeddable, gives Russian dub. Some CDN URLs (trailers.s3.mds.yandex.net)
+    // may be unreachable on certain networks — in that case the widget just shows a spinner.
+    if (/widgets\.kinopoisk\.ru\/.+trailer/i.test(rawUrl)) {
+        try {
+            const url = new URL(rawUrl);
+            url.searchParams.set('onlyPlayer', '1');
+            url.searchParams.set('autoplay', '1');
+            url.searchParams.set('cover', '1');
+            return url.toString();
+        } catch {
+            return rawUrl;
+        }
+    }
+    return '';
+}
+
+function openTrailerPlayer(trailer) {
+    if (!trailer || !trailer.url || !trailerOverlay || !trailerFrame) return;
+    const embedUrl = buildEmbedUrl(trailer);
+    if (!embedUrl) return;
+    trailerFrame.innerHTML = '';
+    const iframe = document.createElement('iframe');
+    iframe.src = embedUrl;
+    iframe.setAttribute('title', 'Трейлер');
+    iframe.setAttribute('allow', 'accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen');
+    iframe.setAttribute('allowfullscreen', 'true');
+    iframe.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+    trailerFrame.appendChild(iframe);
+    trailerOverlay.classList.add('active');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeTrailerPlayer() {
+    if (!trailerOverlay) return;
+    trailerOverlay.classList.remove('active');
+    if (trailerFrame) trailerFrame.innerHTML = '';
+    if (!popupOverlay?.classList.contains('active')) {
+        document.body.style.overflow = '';
+    }
+}
+
+function hidePopupTrailerButton() {
+    if (!popupTrailerBtn) return;
+    popupTrailerBtn.style.display = 'none';
+    popupTrailerBtn.onclick = null;
+}
+
+async function loadPopupTrailerForMovie(movieId) {
+    if (!popupTrailerBtn) return;
+    const requestId = ++currentTrailerRequestId;
+    hidePopupTrailerButton();
+    const trailers = await fetchMovieTrailers(movieId);
+    if (requestId !== currentTrailerRequestId) return;
+    if (!popupOverlay?.classList.contains('active')) return;
+    if (currentPopupContext.movie?.id !== movieId) return;
+    const preferred = pickPreferredTrailer(trailers);
+    if (!preferred) return;
+    popupTrailerBtn.style.display = '';
+    popupTrailerBtn.onclick = () => openTrailerPlayer(preferred);
+}
+
+function hasUsablePosterValue(value) {
+    const poster = (value || '').toString().trim();
+    if (!poster) return false;
+    const normalized = poster.toLowerCase();
+    if (!(normalized.startsWith('http://') || normalized.startsWith('https://'))) {
+        return false;
+    }
+    if (
+        normalized === 'null' ||
+        normalized === 'undefined' ||
+        normalized.endsWith('/null') ||
+        normalized.endsWith('/undefined') ||
+        normalized.includes('nophoto') ||
+        normalized.includes('no_photo') ||
+        normalized.includes('no-poster') ||
+        normalized.includes('poster_none') ||
+        normalized.includes('placeholder') ||
+        normalized.includes('/none')
+    ) {
+        return false;
+    }
+    return true;
+}
+
+function getCardPosterUrl(movie) {
+    if (!movie || typeof movie !== 'object') return '';
+    const candidates = [
+        movie.poster,
+        movie.posterUrlPreview,
+        movie.posterFull,
+        movie.posterUrl
+    ];
+    for (const candidate of candidates) {
+        if (hasUsablePosterValue(candidate)) {
+            return candidate.toString().trim();
+        }
+    }
+    return '';
+}
+
+function hasMoviePoster(movie) {
+    return Boolean(getCardPosterUrl(movie));
+}
+
+function extractMeaningfulDescription(details, movie) {
+    const candidates = [
+        movie?.description,
+        details?.description,
+        details?.shortDescription,
+        details?.slogan
+    ];
+    for (const candidate of candidates) {
+        const text = (candidate || '').toString().trim();
+        if (!text) continue;
+        if (
+            text === DESCRIPTION_PLACEHOLDER ||
+            text === DESCRIPTION_FALLBACK
+        ) {
+            continue;
+        }
+        return text;
+    }
+    return '';
+}
+
+function mergeMovieWithDetails(movie, details) {
+    if (!movie || !details) return movie;
+    const normalized = normalizeMovie({
+        ...movie,
+        ...details,
+        kinopoiskId: movie.id,
+        poster: details.poster || movie.poster,
+        posterFull: details.posterFull || movie.posterFull,
+        posterUrl: details.posterUrl || details.posterFull || movie.posterUrl || movie.posterFull || movie.poster,
+        posterUrlPreview: details.posterUrlPreview || details.poster || movie.posterUrlPreview || movie.poster
+    });
+    const description = extractMeaningfulDescription(details, movie);
+    if (description) {
+        normalized.description = description;
+    }
+    const posterForCard = getCardPosterUrl(normalized);
+    if (posterForCard) {
+        normalized.poster = posterForCard;
+    }
+    return normalized;
+}
+
+function needsDiscoverMovieEnrichment(movie) {
+    const hasRating = Boolean(getMovieRatingText(movie));
+    const hasCountry = Boolean(getPrimaryCountryName(movie));
+    const hasGenres = Boolean(
+        movie?.genresText ||
+        (Array.isArray(movie?.genres) && movie.genres.length > 0) ||
+        (typeof movie?.genres === 'string' && movie.genres.trim())
+    );
+    return !hasMoviePoster(movie)
+        || !extractMeaningfulDescription(null, movie)
+        || !hasRating
+        || !hasCountry
+        || !hasGenres;
+}
+
+function isDiscoverCardDisplayable(movie) {
+    if (!movie || !Number.isFinite(movie.id)) return false;
+    return hasMoviePoster(movie);
+}
+
+async function enrichAndFilterDiscoverMovies(movies) {
+    if (!Array.isArray(movies) || movies.length === 0) return [];
+
+    const filtered = movies
+        .filter((movie) => {
+            if (isDiscoverCardDisplayable(movie)) return true;
+            markMovieAsSeen(movie.id);
+            return false;
+        });
+
+    const enriched = await Promise.all(filtered.map(async (movie) => {
+        if (!needsDiscoverMovieEnrichment(movie)) return movie;
+        const details = await fetchMovieDetails(movie.id);
+        return details ? mergeMovieWithDetails(movie, details) : movie;
+    }));
+
+    return enriched.filter((movie) => {
+        if (isDiscoverCardDisplayable(movie)) return true;
+        markMovieAsSeen(movie.id);
+        return false;
+    });
+}
+
 // ============================================================
-// Р—Р°РіСЂСѓР·РєР° Рё РѕС‚РѕР±СЂР°Р¶РµРЅРёРµ РєР°СЂС‚РѕС‡РµРє
+// Загрузка и отображение карточек
 // ============================================================
+
+function getTopGenresForRecommendations(limit = 5) {
+    const weights = state.preferences?.categoryWeights || {};
+    const entries = Object.entries(weights)
+        .filter(([id, weight]) => id !== 'all' && weight >= 0.3)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, limit)
+        .map(([id]) => id);
+    return entries;
+}
+
+async function fetchRecommendationsBatch() {
+    const likedIds = state.likedOrderIds.slice(0, 10);
+    const topGenres = getTopGenresForRecommendations(5);
+
+    if (likedIds.length === 0 && topGenres.length === 0) {
+        return { movies: [], pageCursor: 1 };
+    }
+
+    try {
+        const response = await fetch(`${BACKEND_API_BASE}/api/recommendations`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            cache: 'no-store',
+            body: JSON.stringify({
+                liked_ids: likedIds,
+                top_genres: topGenres,
+                blocked_genres: [],
+                limit: 20
+            })
+        });
+
+        if (!response.ok) {
+            console.warn('Recommendations request failed:', response.status);
+            return { movies: [], pageCursor: 1 };
+        }
+
+        const data = await response.json();
+        if (!Array.isArray(data.items)) {
+            return { movies: [], pageCursor: 1 };
+        }
+
+        const normalized = data.items
+            .map(normalizeMovie)
+            .filter((movie) => Number.isFinite(movie.id));
+        const unseen = filterUnseenMovies(normalized);
+
+        return { movies: unseen, pageCursor: 1 };
+    } catch (error) {
+        console.warn('Recommendations fetch error:', error);
+        return { movies: [], pageCursor: 1 };
+    }
+}
+
+async function fetchPreparedMoviesBatch(startPage, options = {}) {
+    const {
+        excludeIds = new Set()
+    } = options;
+
+    const normalizedExcludeIds = excludeIds instanceof Set ? excludeIds : new Set(excludeIds || []);
+    const collected = new Map();
+    let pageCursor = startPage;
+    const maxAttempts = state.selectedCountry ? 12 : 1;
+    const targetCount = state.selectedCountry ? 12 : 8;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        const fetched = await fetchCandidateMovies(pageCursor);
+        const unseen = filterUnseenMovies(fetched);
+        const withoutRecent = filterRecentlyShownMovies(unseen);
+        const filtered = applyCountryPreferenceFilter(withoutRecent);
+
+        filtered.forEach((movie) => {
+            if (!movie || !Number.isFinite(movie.id)) return;
+            if (normalizedExcludeIds.has(movie.id)) return;
+            if (!collected.has(movie.id)) {
+                collected.set(movie.id, movie);
+            }
+        });
+
+        pageCursor += 1;
+        if (collected.size >= targetCount || fetched.length === 0) {
+            break;
+        }
+    }
+
+    let movies = [...collected.values()];
+
+    if (movies.length === 0) {
+        // Rescue pass: try broader fetch without strict recent cutoff,
+        // but keep seen/processed protection to avoid repeats.
+        const rescueCollected = new Map();
+        let rescuePage = 1;
+        const rescueAttempts = state.selectedCountry ? 8 : 4;
+        const rescueTargetCount = state.selectedCountry ? 12 : 8;
+
+        for (let attempt = 0; attempt < rescueAttempts; attempt++) {
+            const fetched = await fetchCandidateMovies(rescuePage);
+            const unseen = filterUnseenMovies(fetched);
+            const filtered = applyCountryPreferenceFilter(unseen);
+            filtered.forEach((movie) => {
+                if (!movie || !Number.isFinite(movie.id)) return;
+                if (normalizedExcludeIds.has(movie.id)) return;
+                if (!rescueCollected.has(movie.id)) {
+                    rescueCollected.set(movie.id, movie);
+                }
+            });
+            rescuePage += 1;
+            if (rescueCollected.size >= rescueTargetCount || fetched.length === 0) {
+                break;
+            }
+        }
+
+        movies = [...rescueCollected.values()];
+        if (movies.length > 0) {
+            pageCursor = rescuePage;
+        }
+    }
+
+    movies = filterUnseenMovies(movies)
+        .filter((movie) => !normalizedExcludeIds.has(movie.id));
+    movies = await enrichAndFilterDiscoverMovies(movies);
+    return { movies, pageCursor };
+}
+
+async function prefetchNextMoviesIfNeeded() {
+    if (state.isLoading || state.isPrefetching) return;
+    if (state.currentTab !== 'discover') return;
+
+    const remaining = state.movies.length - state.currentIndex;
+    const prefetchThreshold = 3;
+    if (remaining > prefetchThreshold) return;
+
+    state.isPrefetching = true;
+    try {
+        const queuedIds = new Set(
+            state.movies
+                .slice(state.currentIndex)
+                .map((movie) => movie?.id)
+                .filter((id) => Number.isFinite(id))
+        );
+        const { movies, pageCursor } = await fetchPreparedMoviesBatch(state.page, { excludeIds: queuedIds });
+        if (movies.length === 0) return;
+
+        const incoming = movies.filter((movie) => !queuedIds.has(movie.id));
+        if (incoming.length === 0) return;
+
+        state.page = pageCursor;
+        state.movies.push(...incoming);
+        saveDiscoverFeedCache();
+    } catch (err) {
+        console.error('Prefetch failed:', err);
+    } finally {
+        state.isPrefetching = false;
+    }
+}
 
 async function loadMovies() {
     if (state.isLoading) return;
@@ -1236,14 +2925,29 @@ async function loadMovies() {
     cardStack.innerHTML = '';
 
     try {
-        let movies = [];
-        let effectivePage = state.page;
-        for (let attempt = 0; attempt < 2; attempt++) {
-            const fetched = await fetchCandidateMovies(effectivePage);
-            const unseen = filterUnseenMovies(fetched);
-            movies = filterRecentlyShownMovies(unseen);
-            if (movies.length > 0 || fetched.length === 0) break;
-            effectivePage += 1;
+        computePreferences();
+
+        const useRecommendations = state.likedOrderIds.length >= 3
+            && state.selectedCategoryIds.size === 0
+            && !state.selectedCountry;
+
+        let movies;
+        let pageCursor;
+
+        if (useRecommendations) {
+            const recResult = await fetchRecommendationsBatch();
+            if (recResult.movies.length >= 5) {
+                movies = recResult.movies;
+                pageCursor = state.page;
+            } else {
+                const fallback = await fetchPreparedMoviesBatch(state.page);
+                movies = mergeUniqueMovies([...recResult.movies, ...fallback.movies]);
+                pageCursor = fallback.pageCursor;
+            }
+        } else {
+            const result = await fetchPreparedMoviesBatch(state.page);
+            movies = result.movies;
+            pageCursor = result.pageCursor;
         }
 
         if (movies.length === 0) {
@@ -1251,13 +2955,13 @@ async function loadMovies() {
             return;
         }
 
-        computePreferences();
-        state.page = effectivePage;
+        state.page = pageCursor;
         state.movies = hasUserPreferenceSignals()
             ? sortMoviesForUser(movies)
             : sortColdStartMovies(movies);
         state.currentIndex = 0;
         state.lastShownMovieId = null;
+        saveDiscoverFeedCache();
         renderCards();
 
         loader.style.display = 'none';
@@ -1266,7 +2970,7 @@ async function loadMovies() {
         console.error('\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u043a\u0438:', err);
         loader.style.display = 'none';
         errorState.style.display = '';
-        errorMessage.textContent = err.message || '\u041f\u0440\u043e\u0432\u0435\u0440\u044c\u0442\u0435 \u0441\u043e\u0435\u0434\u0438\u043d\u0435\u043d\u0438\u0435 \u0438 API \u043a\u043b\u044e\u0447';
+        errorMessage.textContent = getReadableMovieLoadError(err);
     } finally {
         state.isLoading = false;
     }
@@ -1280,14 +2984,22 @@ function showEmpty() {
 }
 
 // ============================================================
-// Р РµРЅРґРµСЂРёРЅРі РєР°СЂС‚РѕС‡РµРє (СЃС‚РµРє)
+// Рендеринг карточек (стек)
 // ============================================================
 
 function renderCards() {
     cardStack.innerHTML = '';
 
     const remaining = state.movies.slice(state.currentIndex);
-    const visible = remaining.slice(0, 3);
+    const sanitizedRemaining = remaining.filter((movie) => isDiscoverCardDisplayable(movie));
+    if (sanitizedRemaining.length !== remaining.length) {
+        state.movies = [
+            ...state.movies.slice(0, state.currentIndex),
+            ...sanitizedRemaining
+        ];
+        saveDiscoverFeedCache();
+    }
+    const visible = sanitizedRemaining.slice(0, 3);
 
     visible.forEach((movie, i) => {
         const card = createCardElement(movie, i);
@@ -1299,16 +3011,25 @@ function renderCards() {
         const topMovie = visible[0];
         if (topMovie && topMovie.id !== state.lastShownMovieId) {
             markMovieAsShown(topMovie.id);
+            markMovieAsSeen(topMovie.id);
             state.lastShownMovieId = topMovie.id;
         }
         enableSwipe(topCard);
+        void prefetchNextMoviesIfNeeded();
+    } else if (!state.isLoading) {
+        loadMovies();
     }
+}
+
+function pickBestDescription(details, movie) {
+    return extractMeaningfulDescription(details, movie) || DESCRIPTION_FALLBACK;
 }
 
 function createCardElement(movie, stackIndex) {
     const card = document.createElement('div');
     card.className = 'movie-card';
     card.dataset.id = movie.id;
+    card.dataset.suppressClick = '0';
 
     const scale = 1 - stackIndex * 0.04;
     const translateY = stackIndex * 10;
@@ -1316,26 +3037,33 @@ function createCardElement(movie, stackIndex) {
     card.style.zIndex = 10 - stackIndex;
     card.style.opacity = stackIndex < 3 ? 1 : 0;
 
-    const ratingHtml = movie.rating
+    const ratingText = getMovieRatingText(movie);
+    const ratingHtml = ratingText
         ? `<span class="card-rating">
-               <svg width="14" height="14" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-               ${movie.rating}
-           </span>`
+            <svg width="14" height="14" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            ${ratingText}
+        </span>`
         : '';
     const genresText = movie.genresText || (Array.isArray(movie.genres) ? movie.genres.join(', ') : (movie.genres || ''));
+    const countryWithFlag = formatCountryWithFlag(movie);
+    const cardMetaText = [genresText, movie.ratingAgeLimits || ''].filter(Boolean).join(' • ');
+    const cardPoster = getCardPosterUrl(movie);
 
     card.innerHTML = `
-        <div class="card-bg" style="background-image: url('${movie.poster}')"></div>
+        <div class="card-bg" style="background-image: url('${cardPoster}')"></div>
         <div class="card-gradient"></div>
         <span class="swipe-stamp like">\u2764\uFE0F</span>
         <span class="swipe-stamp dislike">\u2715</span>
+        <span class="swipe-stamp watchlist">\u2B50</span>
+        <span class="swipe-stamp watched">\uD83D\uDC41\uFE0F</span>
         <div class="card-info">
             <div class="card-title">${movie.title}</div>
             <div class="card-meta">
                 ${ratingHtml}
-                <span class="card-year">${movie.year}</span>
+                ${countryWithFlag ? `<span class="card-country">${countryWithFlag}</span>` : ''}
+                ${movie.year ? `<span class="card-year">${movie.year}</span>` : ''}
             </div>
-            ${genresText ? `<div class="card-genres">${genresText}</div>` : ''}
+            ${cardMetaText ? `<div class="card-genres">${cardMetaText}</div>` : ''}
             ${movie.description && movie.description !== '\u041e\u043f\u0438\u0441\u0430\u043d\u0438\u0435 \u043e\u0442\u0441\u0443\u0442\u0441\u0442\u0432\u0443\u0435\u0442'
             ? `<div class="card-desc">${movie.description}</div>`
             : ''
@@ -1343,70 +3071,146 @@ function createCardElement(movie, stackIndex) {
         </div>
     `;
 
+    card.addEventListener('click', () => {
+        if (card.dataset.suppressClick === '1') {
+            card.dataset.suppressClick = '0';
+            return;
+        }
+        openPopup(movie);
+    });
+
     return card;
 }
 
 // ============================================================
-// РЎРІР°Р№Рї-РјРµС…Р°РЅРёРєР° (touch + mouse)
+// Свайп-механика (touch + mouse)
 // ============================================================
+
+function handleCardAction(action, card) {
+    const currentMovie = state.movies[state.currentIndex];
+    if (!currentMovie || !card) return;
+
+    if (action === 'liked') {
+        setMovieStatusLocally(currentMovie, 'liked');
+        void syncStatusToFirestore(currentMovie.id, 'liked');
+    } else if (action === 'watchlist') {
+        setMovieStatusLocally(currentMovie, 'watchlist');
+        void syncStatusToFirestore(currentMovie.id, 'watchlist');
+    } else if (action === 'watched') {
+        setMovieStatusLocally(currentMovie, 'watched');
+        void syncStatusToFirestore(currentMovie.id, 'watched');
+    } else {
+        setMovieStatusLocally(currentMovie, 'skipped');
+        void syncStatusToFirestore(currentMovie.id, 'skipped');
+    }
+
+    flyAway(card, action);
+}
 
 function enableSwipe(card) {
     let startX = 0, startY = 0;
     let currentX = 0;
+    let currentY = 0;
     let isDragging = false;
+    let moved = false;
 
     const stampLike = card.querySelector('.swipe-stamp.like');
     const stampDislike = card.querySelector('.swipe-stamp.dislike');
+    const stampWatchlist = card.querySelector('.swipe-stamp.watchlist');
+    const stampWatched = card.querySelector('.swipe-stamp.watched');
 
     function onStart(e) {
         isDragging = true;
+        moved = false;
         const point = e.touches ? e.touches[0] : e;
         startX = point.clientX;
         startY = point.clientY;
+        currentY = 0;
         card.style.transition = 'none';
+        stampLike.classList.remove('visible');
+        stampDislike.classList.remove('visible');
+        if (stampWatchlist) stampWatchlist.classList.remove('visible');
+        if (stampWatched) stampWatched.classList.remove('visible');
     }
 
     function onMove(e) {
         if (!isDragging) return;
         const point = e.touches ? e.touches[0] : e;
         currentX = point.clientX - startX;
+        currentY = point.clientY - startY;
+        if (Math.abs(currentX) > 8 || Math.abs(currentY) > 8) {
+            moved = true;
+        }
 
         const rotation = currentX * 0.08;
-        card.style.transform = `translateX(${currentX}px) rotate(${rotation}deg)`;
+        card.style.transform = `translate(${currentX}px, ${currentY}px) rotate(${rotation}deg)`;
 
         const threshold = 60;
-        if (currentX > threshold) {
+        const upThreshold = 70;
+        const downThreshold = 70;
+        const isUpIntent = currentY < -upThreshold && Math.abs(currentY) > Math.abs(currentX) * 1.12;
+        const isDownIntent = currentY > downThreshold && Math.abs(currentY) > Math.abs(currentX) * 1.12;
+
+        if (isUpIntent) {
+            if (stampWatchlist) stampWatchlist.classList.add('visible');
+            stampLike.classList.remove('visible');
+            stampDislike.classList.remove('visible');
+            if (stampWatched) stampWatched.classList.remove('visible');
+        } else if (isDownIntent) {
+            if (stampWatched) stampWatched.classList.add('visible');
+            stampLike.classList.remove('visible');
+            stampDislike.classList.remove('visible');
+            if (stampWatchlist) stampWatchlist.classList.remove('visible');
+        } else if (currentX > threshold) {
             stampLike.classList.add('visible');
             stampDislike.classList.remove('visible');
+            if (stampWatchlist) stampWatchlist.classList.remove('visible');
+            if (stampWatched) stampWatched.classList.remove('visible');
         } else if (currentX < -threshold) {
             stampDislike.classList.add('visible');
             stampLike.classList.remove('visible');
+            if (stampWatchlist) stampWatchlist.classList.remove('visible');
+            if (stampWatched) stampWatched.classList.remove('visible');
         } else {
             stampLike.classList.remove('visible');
             stampDislike.classList.remove('visible');
+            if (stampWatchlist) stampWatchlist.classList.remove('visible');
+            if (stampWatched) stampWatched.classList.remove('visible');
         }
     }
 
     function onEnd() {
         if (!isDragging) return;
         isDragging = false;
+        if (moved) {
+            card.dataset.suppressClick = '1';
+        }
 
         const swipeThreshold = 100;
+        const swipeUpThreshold = 110;
+        const swipeDownThreshold = 110;
+        const isUpSwipe = currentY < -swipeUpThreshold && Math.abs(currentY) > Math.abs(currentX) * 1.2;
+        const isDownSwipe = currentY > swipeDownThreshold && Math.abs(currentY) > Math.abs(currentX) * 1.2;
 
-        if (currentX > swipeThreshold) {
-            // РЎРІР°Р№Рї РІРїСЂР°РІРѕ вЂ” Р›РђР™Рљ в†’ СЃРѕС…СЂР°РЅСЏРµРј РІ Firebase
-            flyAway(card, 'right');
-            addToFavorites(state.movies[state.currentIndex]);
+        if (isUpSwipe) {
+            handleCardAction('watchlist', card);
+        } else if (isDownSwipe) {
+            handleCardAction('watched', card);
+        } else if (currentX > swipeThreshold) {
+            handleCardAction('liked', card);
         } else if (currentX < -swipeThreshold) {
-            flyAway(card, 'left');
+            handleCardAction('skipped', card);
         } else {
             card.style.transition = 'transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)';
             card.style.transform = 'translateY(0) scale(1)';
             stampLike.classList.remove('visible');
             stampDislike.classList.remove('visible');
+            if (stampWatchlist) stampWatchlist.classList.remove('visible');
+            if (stampWatched) stampWatched.classList.remove('visible');
         }
 
         currentX = 0;
+        currentY = 0;
     }
 
     card.addEventListener('touchstart', onStart, { passive: true });
@@ -1417,28 +3221,31 @@ function enableSwipe(card) {
     document.addEventListener('mouseup', onEnd);
 }
 
-function flyAway(card, direction) {
-    const flyX = direction === 'right' ? window.innerWidth : -window.innerWidth;
-    const rotation = direction === 'right' ? 30 : -30;
-
-    card.style.transition = 'transform 0.5s ease, opacity 0.5s ease';
-    card.style.transform = `translateX(${flyX}px) rotate(${rotation}deg)`;
-    card.style.opacity = '0';
-    const currentMovie = state.movies[state.currentIndex];
-    if (currentMovie) {
-        if (direction === 'right') {
-            markMovieLiked(currentMovie.id);
-        } else if (direction === 'left') {
-            markMovieDisliked(currentMovie.id);
-        }
-        markMovieAsSeen(currentMovie.id);
-        computePreferences();
+function flyAway(card, action) {
+    let transform = '';
+    if (action === 'liked') {
+        const flyX = window.innerWidth;
+        transform = `translateX(${flyX}px) rotate(30deg)`;
+    } else if (action === 'watchlist') {
+        const flyY = -Math.max(260, Math.round(window.innerHeight * 0.58));
+        transform = `translateY(${flyY}px) scale(0.9)`;
+    } else if (action === 'watched') {
+        const flyY = Math.max(260, Math.round(window.innerHeight * 0.58));
+        transform = `translateY(${flyY}px) scale(0.9)`;
+    } else {
+        const flyX = -window.innerWidth;
+        transform = `translateX(${flyX}px) rotate(-30deg)`;
     }
+    card.style.transition = 'transform 0.5s ease, opacity 0.5s ease';
+    card.style.transform = transform;
+    card.style.opacity = '0';
 
     card.addEventListener('transitionend', () => {
+        notifyAndroidMovieSwiped();
         state.currentIndex++;
+        saveDiscoverFeedCache();
         if (state.currentIndex >= state.movies.length) {
-            showEmpty();
+            loadMovies();
         } else {
             renderCards();
         }
@@ -1446,59 +3253,46 @@ function flyAway(card, direction) {
 }
 
 // ============================================================
-// РР·Р±СЂР°РЅРЅРѕРµ (Firestore + Р»РѕРєР°Р»СЊРЅС‹Р№ РєСЌС€)
+// Избранное (Firestore + локальный кэш)
 // ============================================================
 
 /**
- * Р”РѕР±Р°РІРёС‚СЊ С„РёР»СЊРј РІ РёР·Р±СЂР°РЅРЅРѕРµ:
- * 1. Р›РѕРєР°Р»СЊРЅРѕ (state.favorites)
- * 2. Р’ Firestore (users/{uid}/favorites/{filmId})
+ * Установить статус фильма локально + в Firestore.
  */
-function addToFavorites(movie) {
+function setMovieStatus(movie, status) {
     if (!movie || !Number.isFinite(movie.id)) return;
-    // РќРµ РґРѕР±Р°РІР»СЏРµРј РґСѓР±Р»РёРєР°С‚С‹
-    if (state.favoriteIds.has(movie.id)) return;
-
-    markMovieLiked(movie.id);
-    state.favoriteIds.add(movie.id);
-    state.favoriteOrderIds.unshift(movie.id);
-    upsertFavoriteDetail(movie);
-    state.favoritesVisibleCount = Math.max(state.favoritesVisibleCount, FAVORITES_PAGE_SIZE);
-    computePreferences();
-    updateFavBadge();
-    renderFavorites();
-    saveFavoritesCache();
-
-    // РђСЃРёРЅС…СЂРѕРЅРЅРѕ СЃРѕС…СЂР°РЅСЏРµРј РІ Firestore
-    saveToFirestore(movie);
+    setMovieStatusLocally(movie, status);
+    void syncStatusToFirestore(movie.id, status);
 }
 
 /**
- * РЈРґР°Р»РёС‚СЊ С„РёР»СЊРј РёР· РёР·Р±СЂР°РЅРЅРѕРіРѕ (Р»РѕРєР°Р»СЊРЅРѕ + Firestore)
+ * Удалить фильм из конкретного списка.
  */
-function removeFromFavorites(movieId) {
+function removeFromStatusList(movieId, status) {
     const normalizedId = Number(movieId);
-    if (!Number.isFinite(normalizedId)) return;
-    state.favoriteIds.delete(normalizedId);
-    state.favoriteOrderIds = state.favoriteOrderIds.filter((id) => id !== normalizedId);
-    state.favoriteDetailsById.delete(normalizedId);
-    syncFavoritesArray();
-    computePreferences();
-    updateFavBadge();
-    renderFavorites();
-    if (state.movies.length > 0) {
-        state.movies = sortMoviesForUser(state.movies);
-        state.currentIndex = 0;
-        renderCards();
-    }
+    if (!Number.isFinite(normalizedId) || !status) return;
+    removeMovieFromStatusLocally(normalizedId, status);
+    void removeStatusFromFirestore(normalizedId, status);
+}
 
-    // РђСЃРёРЅС…СЂРѕРЅРЅРѕ СѓРґР°Р»СЏРµРј РёР· Firestore
-    deleteFromFirestore(normalizedId);
-    saveFavoritesCache();
+function addToWatchlist(movie) {
+    setMovieStatus(movie, 'watchlist');
+}
+
+function addToLiked(movie) {
+    setMovieStatus(movie, 'liked');
+}
+
+function addToWatched(movie) {
+    setMovieStatus(movie, 'watched');
+}
+
+function addToSkipped(movie) {
+    setMovieStatus(movie, 'skipped');
 }
 
 function updateFavBadge() {
-    const count = state.favoriteIds.size;
+    const count = state.favoriteIds.size + state.likedIds.size + state.watchedIds.size;
     if (count > 0) {
         favBadge.textContent = count;
         favBadge.style.display = 'inline-block';
@@ -1507,35 +3301,28 @@ function updateFavBadge() {
     }
 }
 
-function renderFavorites() {
-    favGrid.innerHTML = '';
+function renderStatusSection(grid, ids, detailsById, status, visibleCount, onShowMore) {
+    if (!grid) return;
+    grid.innerHTML = '';
+    const visibleIds = ids.slice(0, visibleCount);
 
-    if (state.favoriteOrderIds.length === 0) {
-        emptyFavs.style.display = '';
-        emptyFavs.classList.remove('hidden');
-        return;
-    }
-
-    emptyFavs.style.display = 'none';
-    emptyFavs.classList.add('hidden');
-
-    const visibleIds = state.favoriteOrderIds.slice(0, state.favoritesVisibleCount);
     visibleIds.forEach((id, i) => {
-        const movie = state.favoriteDetailsById.get(id);
+        const movie = detailsById.get(id);
         const card = document.createElement('div');
         card.className = movie ? 'fav-card' : 'fav-card skeleton';
         card.style.animationDelay = `${i * 0.06}s`;
         if (movie) {
             const genresText = movie.genresText || (Array.isArray(movie.genres) ? movie.genres.join(', ') : (movie.genres || ''));
+            const ratingText = getMovieRatingText(movie);
             card.innerHTML = `
                 <img src="${movie.poster}" alt="${movie.title}" loading="lazy">
                 <div class="fav-info">
                     <div class="fav-title">${movie.title}</div>
-                    ${movie.rating ? `<div class="fav-rating">\u2B50 ${movie.rating}</div>` : ''}
+                    ${ratingText ? `<div class="fav-rating">\u2B50 ${ratingText}</div>` : ''}
                     ${genresText ? `<div class="fav-genres">${genresText}</div>` : ''}
                 </div>
             `;
-            card.addEventListener('click', () => openPopup(movie));
+            card.addEventListener('click', () => openPopup(movie, status));
         } else {
             card.innerHTML = `
                 <div class="skeleton-poster"></div>
@@ -1545,65 +3332,263 @@ function renderFavorites() {
                 </div>
             `;
         }
-        favGrid.appendChild(card);
+        grid.appendChild(card);
     });
 
-    if (state.favoriteOrderIds.length > state.favoritesVisibleCount) {
+    if (ids.length > visibleCount) {
         const moreBtn = document.createElement('button');
         moreBtn.className = 'reset-btn';
         moreBtn.textContent = 'Показать ещё';
         moreBtn.style.gridColumn = '1 / -1';
-        moreBtn.addEventListener('click', () => {
-            state.favoritesVisibleCount += FAVORITES_PAGE_SIZE;
-            renderFavorites();
-        });
-        favGrid.appendChild(moreBtn);
+        moreBtn.addEventListener('click', onShowMore);
+        grid.appendChild(moreBtn);
+    }
+}
+
+function renderFavorites() {
+    const hasWatchlist = state.favoriteOrderIds.length > 0;
+    const hasLiked = state.likedOrderIds.length > 0;
+    const hasWatched = state.watchedOrderIds.length > 0;
+
+    if (watchlistSection) watchlistSection.style.display = hasWatchlist ? '' : 'none';
+    if (likedSection) likedSection.style.display = hasLiked ? '' : 'none';
+    if (watchedSection) watchedSection.style.display = hasWatched ? '' : 'none';
+
+    if (!hasWatchlist && !hasLiked && !hasWatched) {
+        if (watchlistGrid) watchlistGrid.innerHTML = '';
+        if (likedGrid) likedGrid.innerHTML = '';
+        if (watchedGrid) watchedGrid.innerHTML = '';
+        emptyFavs.style.display = '';
+        emptyFavs.classList.remove('hidden');
+        return;
     }
 
+    emptyFavs.style.display = 'none';
+    emptyFavs.classList.add('hidden');
+
+    renderStatusSection(
+        watchlistGrid,
+        state.favoriteOrderIds,
+        state.favoriteDetailsById,
+        'watchlist',
+        state.favoritesVisibleCount,
+        () => {
+            state.favoritesVisibleCount += FAVORITES_PAGE_SIZE;
+            renderFavorites();
+        }
+    );
+
+    renderStatusSection(
+        likedGrid,
+        state.likedOrderIds,
+        state.likedDetailsById,
+        'liked',
+        state.likedVisibleCount,
+        () => {
+            state.likedVisibleCount += FAVORITES_PAGE_SIZE;
+            renderFavorites();
+        }
+    );
+
+    renderStatusSection(
+        watchedGrid,
+        state.watchedOrderIds,
+        state.watchedDetailsById,
+        'watched',
+        state.watchedVisibleCount,
+        () => {
+            state.watchedVisibleCount += FAVORITES_PAGE_SIZE;
+            renderFavorites();
+        }
+    );
+
     ensureFavoriteDetailsForVisible();
+    ensureLikedDetailsForVisible();
+    ensureWatchedDetailsForVisible();
 }
 
 // ============================================================
-// Popup вЂ” Р”РµС‚Р°Р»Рё С„РёР»СЊРјР°
+// Popup — Детали фильма
 // ============================================================
 
-let currentPopupMovie = null;
+let currentPopupContext = { movie: null, status: null };
 
-async function openPopup(movie) {
-    currentPopupMovie = movie;
+function notifyAndroidMovieDescriptionOpened() {
+    try {
+        if (window.AndroidAds && typeof window.AndroidAds.onMovieDescriptionOpened === 'function') {
+            window.AndroidAds.onMovieDescriptionOpened();
+        }
+    } catch (error) {
+        console.warn('Android interstitial bridge error:', error);
+    }
+}
+
+function notifyAndroidMovieSwiped() {
+    try {
+        if (window.AndroidAds && typeof window.AndroidAds.onMovieSwiped === 'function') {
+            window.AndroidAds.onMovieSwiped();
+        }
+    } catch (error) {
+        console.warn('Android swipe bridge error:', error);
+    }
+}
+
+function getPopupStatusActionMeta(sourceStatus) {
+    if (sourceStatus === 'liked') {
+        return {
+            watchlist: {
+                targetStatus: 'watchlist',
+                label: 'Хочу посмотреть',
+                cssClass: 'is-watchlist'
+            },
+            watched: {
+                targetStatus: 'watched',
+                label: 'Отметить просмотренным',
+                cssClass: 'is-watched'
+            }
+        };
+    }
+    if (sourceStatus === 'watchlist') {
+        return {
+            watchlist: null,
+            watched: {
+                targetStatus: 'watched',
+                label: 'Отметить просмотренным',
+                cssClass: 'is-watched'
+            }
+        };
+    }
+    if (sourceStatus === 'watched') {
+        return {
+            watchlist: {
+                targetStatus: 'watchlist',
+                label: 'Хочу посмотреть',
+                cssClass: 'is-watchlist'
+            },
+            watched: null
+        };
+    }
+    return {
+        watchlist: null,
+        watched: null
+    };
+}
+
+function applyPopupStatusButton(button, textNode, meta) {
+    if (!button || !textNode) return;
+    button.classList.remove('is-watched', 'is-watchlist');
+
+    if (!meta) {
+        button.style.display = 'none';
+        button.dataset.targetStatus = '';
+        return;
+    }
+
+    button.style.display = '';
+    button.dataset.targetStatus = meta.targetStatus;
+    textNode.textContent = meta.label;
+    if (meta.cssClass) {
+        button.classList.add(meta.cssClass);
+    }
+}
+
+function applyPopupActionButtons(sourceStatus) {
+    const popupDeleteButton = $('popup-delete');
+    if (popupDeleteButton) {
+        popupDeleteButton.style.display = sourceStatus ? '' : 'none';
+    }
+
+    const meta = getPopupStatusActionMeta(sourceStatus);
+    applyPopupStatusButton(popupToggleWatchlist, popupToggleWatchlistText, meta.watchlist);
+    applyPopupStatusButton(popupToggleWatched, popupToggleWatchedText, meta.watched);
+}
+
+async function openPopup(movie, sourceStatus = null) {
+    currentPopupContext = { movie, status: sourceStatus };
     markMovieOpened(movie.id);
     computePreferences();
+    notifyAndroidMovieDescriptionOpened();
 
     popupPoster.style.backgroundImage = `url('${movie.posterFull || movie.poster}')`;
     popupTitle.textContent = movie.title;
-    popupYear.textContent = movie.year || '';
-    popupRating.textContent = movie.rating ? `\u2B50 ${movie.rating}` : '';
-    popupGenre.textContent = movie.genresText || movie.genres || '';
-    popupDesc.textContent = movie.description || '\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430...';
+    setPopupMetaChip(popupYear, movie.year || '');
+    setPopupMetaChip(popupRating, getMovieRatingText(movie));
+    setPopupMetaChip(popupCountry, formatCountryWithFlag(movie));
+    setPopupMetaChip(popupGenre, getMovieMetaText(movie));
+    popupDesc.textContent = pickBestDescription(null, movie);
+    applyPopupActionButtons(sourceStatus);
 
     popupOverlay.classList.add('active');
     document.body.style.overflow = 'hidden';
+    loadPopupTrailerForMovie(movie.id);
 
-    // Р•СЃР»Рё РѕРїРёСЃР°РЅРёРµ РѕС‚СЃСѓС‚СЃС‚РІСѓРµС‚ вЂ” Р·Р°РіСЂСѓР¶Р°РµРј СЃ API
-    if (!movie.description || movie.description === '\u041e\u043f\u0438\u0441\u0430\u043d\u0438\u0435 \u043e\u0442\u0441\u0443\u0442\u0441\u0442\u0432\u0443\u0435\u0442') {
+    // Если не хватает ключевых данных карточки — дозагружаем детали с API.
+    const needsDetails =
+        !movie.description ||
+        movie.description === DESCRIPTION_PLACEHOLDER ||
+        !getPrimaryCountryName(movie) ||
+        !getMovieMetaText(movie);
+    if (needsDetails) {
+        const openedMovieId = movie.id;
         const details = await fetchMovieDetails(movie.id);
         if (details) {
-            popupDesc.textContent = details.description;
-            if (details.genres) popupGenre.textContent = details.genres;
-            movie.description = details.description;
-            movie.genresText = details.genres || movie.genresText;
+            if (
+                !popupOverlay.classList.contains('active') ||
+                currentPopupContext.movie?.id !== openedMovieId
+            ) {
+                return;
+            }
+
+            popupDesc.textContent = pickBestDescription(details, movie);
+            setPopupMetaChip(popupRating, getMovieRatingText(details));
+            setPopupMetaChip(popupCountry, formatCountryWithFlag(details));
+            setPopupMetaChip(popupGenre, getMovieMetaText(details));
+            movie.description = pickBestDescription(details, movie);
+            movie.genres = details.genres || movie.genres;
+            movie.genresText = details.genresText || movie.genresText;
+            movie.countries = details.countries || movie.countries;
+            movie.countriesText = details.countriesText || movie.countriesText;
+            movie.ratingKinopoisk = details.ratingKinopoisk ?? movie.ratingKinopoisk;
+            movie.ratingImdb = details.ratingImdb ?? movie.ratingImdb;
+            movie.ratingLabel = details.ratingLabel || movie.ratingLabel;
+            movie.rating = details.rating ?? movie.rating;
+            movie.ratingAgeLimits = details.ratingAgeLimits || movie.ratingAgeLimits;
+            movie.poster = details.poster || movie.poster;
+            movie.posterFull = details.posterFull || movie.posterFull;
+            popupPoster.style.backgroundImage = `url('${movie.posterFull || movie.poster}')`;
+            setPopupMetaChip(popupCountry, formatCountryWithFlag(movie));
+            setPopupMetaChip(popupGenre, getMovieMetaText(movie));
         }
     }
 }
 
 function closePopup() {
+    const popup = $('popup');
+    if (popup) {
+        popup.style.transition = '';
+        popup.style.transform = '';
+    }
+    popupOverlay.style.opacity = '';
     popupOverlay.classList.remove('active');
     document.body.style.overflow = '';
-    currentPopupMovie = null;
+    applyPopupActionButtons(null);
+    hidePopupTrailerButton();
+    closeTrailerPlayer();
+    currentPopupContext = { movie: null, status: null };
+}
+
+function handlePopupStatusActionClick(button) {
+    if (!button || !currentPopupContext.movie || !currentPopupContext.status) return;
+    const targetStatus = (button.dataset.targetStatus || '').trim();
+    if (!targetStatus) return;
+
+    setMovieStatus(currentPopupContext.movie, targetStatus);
+    currentPopupContext.status = targetStatus;
+    applyPopupActionButtons(currentPopupContext.status);
 }
 
 // ============================================================
-// РќР°РІРёРіР°С†РёСЏ РїРѕ С‚Р°Р±Р°Рј
+// Навигация по табам
 // ============================================================
 
 function switchTab(tab) {
@@ -1619,14 +3604,14 @@ function switchTab(tab) {
 
     $(`screen-${tab}`).classList.add('active');
 
-    // РџСЂРё РїРµСЂРµРєР»СЋС‡РµРЅРёРё РЅР° В«РР·Р±СЂР°РЅРЅРѕРµВ» вЂ” Р·Р°РіСЂСѓР¶Р°РµРј РёР· Firestore
+    // При переключении на «Избранное» — загружаем из Firestore
     if (tab === 'favorites') {
         loadFavoritesFromFirestore();
     }
 }
 
 // ============================================================
-// РћР±СЂР°Р±РѕС‚РєР° С„РёР»СЊС‚СЂРѕРІ РєР°С‚РµРіРѕСЂРёР№
+// Обработка фильтров категорий
 // ============================================================
 
 function toggleCategory(categoryId) {
@@ -1644,17 +3629,13 @@ function toggleCategory(categoryId) {
 }
 
 // ============================================================
-// РљРЅРѕРїРєРё Like/Dislike
+// Кнопки Like/Dislike
 // ============================================================
 
-function handleButtonSwipe(direction) {
+function handleButtonSwipe(action) {
     const topCard = cardStack.querySelector('.movie-card');
     if (!topCard) return;
-
-    if (direction === 'right') {
-        addToFavorites(state.movies[state.currentIndex]);
-    }
-    flyAway(topCard, direction);
+    handleCardAction(action, topCard);
 }
 
 // ============================================================
@@ -1678,18 +3659,356 @@ function setupPasswordToggles() {
 // User Menu
 // ============================================================
 
+const CLEARABLE_STATUS_CONFIG = {
+    watchlist: {
+        title: '“Хочу посмотреть”',
+        emptyMessage: 'Список “Хочу посмотреть” уже пуст.'
+    },
+    liked: {
+        title: '“Понравилось”',
+        emptyMessage: 'Список “Понравилось” уже пуст.'
+    },
+    watched: {
+        title: '“Просмотренное”',
+        emptyMessage: 'Список “Просмотренное” уже пуст.'
+    }
+};
+let confirmModalResolver = null;
+
+function resolveAppVersion() {
+    const fallback = APP_RUNTIME_CONFIG.appVersion;
+    try {
+        if (window.AndroidAds && typeof window.AndroidAds.getAppVersion === 'function') {
+            const fromAndroid = window.AndroidAds.getAppVersion();
+            if (typeof fromAndroid === 'string' && fromAndroid.trim()) {
+                return fromAndroid.trim();
+            }
+        }
+    } catch (error) {
+        console.warn('Cannot get app version from Android bridge:', error);
+    }
+    return fallback;
+}
+
+function syncProfileInfoToSettings() {
+    if (!state.user) return;
+    const displayName = resolveUserDisplayName(state.user);
+    const email = state.user.email || '';
+    const firstLetter = displayName.charAt(0).toUpperCase();
+
+    userName.textContent = displayName;
+    userEmail.textContent = email;
+    userAvatar.textContent = firstLetter;
+
+    if (settingsUserName) settingsUserName.textContent = displayName;
+    if (settingsUserEmail) settingsUserEmail.textContent = email;
+    if (settingsUserAvatar) settingsUserAvatar.textContent = firstLetter;
+}
+
 function toggleUserMenu() {
     userMenu.classList.toggle('active');
 }
 
 function closeUserMenu(e) {
-    if (!userMenu.contains(e.target) && e.target !== $('btn-user')) {
+    const userButton = $('btn-user');
+    if (!userMenu.contains(e.target) && !(userButton && userButton.contains(e.target))) {
         userMenu.classList.remove('active');
     }
 }
 
+function openSettingsOverlay() {
+    if (!settingsOverlay) return;
+    syncProfileInfoToSettings();
+    settingsOverlay.classList.add('active');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeSettingsOverlay() {
+    if (!settingsOverlay) return;
+    settingsOverlay.classList.remove('active');
+    if (aboutModalOverlay) {
+        aboutModalOverlay.classList.remove('active');
+    }
+    closeConfirmModalWithResult(false);
+    if (!popupOverlay.classList.contains('active') && !countryPickerOverlay?.classList.contains('active')) {
+        document.body.style.overflow = '';
+    }
+}
+
+function openAboutModal() {
+    if (!aboutModalOverlay) return;
+    if (aboutVersion) {
+        aboutVersion.textContent = resolveAppVersion();
+    }
+    aboutModalOverlay.classList.add('active');
+}
+
+function closeAboutModal() {
+    if (!aboutModalOverlay) return;
+    aboutModalOverlay.classList.remove('active');
+}
+
+function closeConfirmModalWithResult(result) {
+    if (confirmModalOverlay) {
+        confirmModalOverlay.classList.remove('active');
+    }
+    const resolver = confirmModalResolver;
+    confirmModalResolver = null;
+    if (typeof resolver === 'function') {
+        resolver(Boolean(result));
+    }
+}
+
+function openConfirmModal(options = {}) {
+    const {
+        title = 'Подтверждение',
+        message = '',
+        confirmText = 'Подтвердить',
+        cancelText = 'Отмена',
+        showCancel = true,
+        danger = true
+    } = options;
+
+    if (!confirmModalOverlay || !confirmModalTitle || !confirmModalMessage || !confirmModalOk || !confirmModalCancel) {
+        const fallback = window.confirm(message || title);
+        return Promise.resolve(fallback);
+    }
+
+    if (confirmModalResolver) {
+        closeConfirmModalWithResult(false);
+    }
+
+    confirmModalTitle.textContent = title;
+    confirmModalMessage.textContent = message;
+    confirmModalOk.textContent = confirmText;
+    confirmModalCancel.textContent = cancelText;
+    confirmModalCancel.style.display = showCancel ? '' : 'none';
+    confirmModalOk.classList.toggle('danger', danger);
+
+    confirmModalOverlay.classList.add('active');
+
+    return new Promise((resolve) => {
+        confirmModalResolver = resolve;
+    });
+}
+
+function openExternalUrl(url) {
+    if (!url) return;
+    try {
+        if (window.AndroidAds && typeof window.AndroidAds.openExternalUrl === 'function') {
+            window.AndroidAds.openExternalUrl(url);
+            return;
+        }
+    } catch (error) {
+        console.warn('Android external URL bridge error:', error);
+    }
+    window.open(url, '_blank', 'noopener,noreferrer');
+}
+
+function openContactEmail() {
+    const email = APP_RUNTIME_CONFIG.contactEmail;
+    if (!email) return;
+    try {
+        if (window.AndroidAds && typeof window.AndroidAds.composeEmail === 'function') {
+            window.AndroidAds.composeEmail(
+                APP_RUNTIME_CONFIG.contactEmail,
+                APP_RUNTIME_CONFIG.contactSubject,
+                ''
+            );
+            return;
+        }
+    } catch (error) {
+        console.warn('Android email bridge error:', error);
+    }
+    const subject = encodeURIComponent(APP_RUNTIME_CONFIG.contactSubject || '');
+    window.location.href = `mailto:${email}?subject=${subject}`;
+}
+
+function getStatusIdsForClear(status) {
+    if (status === 'watchlist') return [...state.favoriteOrderIds];
+    if (status === 'liked') return [...state.likedOrderIds];
+    if (status === 'watched') return [...state.watchedOrderIds];
+    return [];
+}
+
+function clearStatusListLocally(status, idsToClear) {
+    if (status === 'watchlist') {
+        state.favoriteIds.clear();
+        state.favoriteOrderIds = [];
+        state.favoriteDetailsById.clear();
+        state.favoritesVisibleCount = FAVORITES_PAGE_SIZE;
+    } else if (status === 'liked') {
+        state.likedIds.clear();
+        state.likedOrderIds = [];
+        state.likedDetailsById.clear();
+        state.likedVisibleCount = FAVORITES_PAGE_SIZE;
+        idsToClear.forEach((id) => state.interactions.likedMovieIds.delete(id));
+    } else if (status === 'watched') {
+        state.watchedIds.clear();
+        state.watchedOrderIds = [];
+        state.watchedDetailsById.clear();
+        state.watchedVisibleCount = FAVORITES_PAGE_SIZE;
+    } else {
+        return;
+    }
+
+    syncFavoritesArray();
+    syncLikedArray();
+    syncWatchedArray();
+    saveAllStatusCaches();
+    applyFavoritesState();
+}
+
+async function clearStatusListInCloud(status) {
+    if (!state.user) return;
+    let payload = null;
+
+    if (status === 'watchlist') {
+        payload = { watchlist: [], favorites: [] };
+    } else if (status === 'liked') {
+        payload = { liked: [] };
+    } else if (status === 'watched') {
+        payload = { watched: [] };
+    }
+
+    if (!payload) return;
+    try {
+        await setDoc(getUserDocRef(), payload, { merge: true });
+    } catch (err) {
+        console.error('Failed to clear list in Firestore:', err);
+    }
+}
+
+async function clearStatusListWithConfirmation(status) {
+    const meta = CLEARABLE_STATUS_CONFIG[status];
+    if (!meta) return;
+
+    const idsToClear = getStatusIdsForClear(status);
+    if (idsToClear.length === 0) {
+        await openConfirmModal({
+            title: 'Информация',
+            message: meta.emptyMessage,
+            confirmText: 'Понятно',
+            showCancel: false,
+            danger: false
+        });
+        return;
+    }
+
+    const confirmed = await openConfirmModal({
+        title: 'Подтвердите очистку',
+        message: `Очистить список ${meta.title}?\nЭто действие нельзя отменить.`,
+        confirmText: 'Очистить',
+        cancelText: 'Отмена',
+        showCancel: true,
+        danger: true
+    });
+    if (!confirmed) return;
+
+    clearStatusListLocally(status, idsToClear);
+    void clearStatusListInCloud(status);
+}
+
+function setupGestureNavigation() {
+    const favoritesScreen = $('screen-favorites');
+    const popup = $('popup');
+
+    if (favoritesScreen) {
+        let startX = 0;
+        let startY = 0;
+        let tracking = false;
+
+        favoritesScreen.addEventListener('touchstart', (e) => {
+            const t = e.touches && e.touches[0];
+            if (!t) return;
+            tracking = true;
+            startX = t.clientX;
+            startY = t.clientY;
+        }, { passive: true });
+
+        favoritesScreen.addEventListener('touchend', (e) => {
+            if (!tracking) return;
+            tracking = false;
+            if (state.currentTab !== 'favorites' || popupOverlay.classList.contains('active')) return;
+            const t = e.changedTouches && e.changedTouches[0];
+            if (!t) return;
+
+            const dx = t.clientX - startX;
+            const dy = t.clientY - startY;
+            const isRightSwipe = dx > 90 && Math.abs(dy) < 70 && Math.abs(dx) > Math.abs(dy) * 1.2;
+            if (isRightSwipe) {
+                switchTab('discover');
+            }
+        }, { passive: true });
+    }
+
+    if (popup) {
+        let startX = 0;
+        let startY = 0;
+        let tracking = false;
+        let dragOffsetY = 0;
+
+        popup.addEventListener('touchstart', (e) => {
+            if (!popupOverlay.classList.contains('active')) return;
+            const t = e.touches && e.touches[0];
+            if (!t) return;
+            tracking = true;
+            dragOffsetY = 0;
+            startX = t.clientX;
+            startY = t.clientY;
+        }, { passive: true });
+
+        popup.addEventListener('touchmove', (e) => {
+            if (!tracking || !popupOverlay.classList.contains('active')) return;
+            const t = e.touches && e.touches[0];
+            if (!t) return;
+
+            const dx = t.clientX - startX;
+            const dy = t.clientY - startY;
+            const canDragDown = popup.scrollTop <= 0 && dy > 0 && Math.abs(dy) > Math.abs(dx);
+            if (!canDragDown) return;
+
+            dragOffsetY = Math.min(dy, 260);
+            popup.style.transition = 'none';
+            popup.style.transform = `translateY(${dragOffsetY}px)`;
+            popupOverlay.style.opacity = `${Math.max(0.55, 1 - dragOffsetY / 380)}`;
+        }, { passive: true });
+
+        popup.addEventListener('touchend', (e) => {
+            if (!tracking) return;
+            tracking = false;
+            if (!popupOverlay.classList.contains('active')) return;
+            const t = e.changedTouches && e.changedTouches[0];
+            if (!t) return;
+
+            const dx = t.clientX - startX;
+            const dy = t.clientY - startY;
+            const canCloseBySwipeDown = popup.scrollTop <= 0;
+            const isDownSwipe = dy > 90 && Math.abs(dx) < 70 && Math.abs(dy) > Math.abs(dx) * 1.2;
+
+            if (canCloseBySwipeDown && isDownSwipe) {
+                closePopup();
+                return;
+            }
+
+            popup.style.transition = '';
+            popup.style.transform = '';
+            popupOverlay.style.opacity = '';
+            dragOffsetY = 0;
+        }, { passive: true });
+
+        popup.addEventListener('touchcancel', () => {
+            tracking = false;
+            popup.style.transition = '';
+            popup.style.transform = '';
+            popupOverlay.style.opacity = '';
+            dragOffsetY = 0;
+        }, { passive: true });
+    }
+}
+
 // ============================================================
-// РРЅРёС†РёР°Р»РёР·Р°С†РёСЏ
+// Инициализация
 // ============================================================
 
 function init() {
@@ -1697,7 +4016,7 @@ function init() {
     formLogin.addEventListener('submit', handleLogin);
     formRegister.addEventListener('submit', handleRegister);
 
-    // РџРµСЂРµРєР»СЋС‡РµРЅРёРµ Login <-> Register
+    // Переключение Login <-> Register
     $('show-register').addEventListener('click', (e) => {
         e.preventDefault();
         formLogin.style.display = 'none';
@@ -1716,30 +4035,71 @@ function init() {
 
     // --- User Menu ---
     $('btn-user').addEventListener('click', toggleUserMenu);
+    $('btn-open-settings').addEventListener('click', () => {
+        userMenu.classList.remove('active');
+        openSettingsOverlay();
+    });
     $('btn-logout').addEventListener('click', () => {
         userMenu.classList.remove('active');
         handleLogout();
     });
     document.addEventListener('click', closeUserMenu);
 
+    if (aboutVersion) {
+        aboutVersion.textContent = resolveAppVersion();
+    }
+    $('btn-settings-back').addEventListener('click', closeSettingsOverlay);
+    $('btn-about-app').addEventListener('click', openAboutModal);
+    $('btn-about-close').addEventListener('click', closeAboutModal);
+    $('btn-open-privacy').addEventListener('click', () => openExternalUrl(APP_RUNTIME_CONFIG.privacyPolicyUrl));
+    $('btn-contact-us').addEventListener('click', openContactEmail);
+    $('btn-clear-watchlist').addEventListener('click', () => void clearStatusListWithConfirmation('watchlist'));
+    $('btn-clear-liked').addEventListener('click', () => void clearStatusListWithConfirmation('liked'));
+    $('btn-clear-watched').addEventListener('click', () => void clearStatusListWithConfirmation('watched'));
+
+    if (settingsOverlay) {
+        settingsOverlay.addEventListener('click', (e) => {
+            if (e.target === settingsOverlay) closeSettingsOverlay();
+        });
+    }
+    if (aboutModalOverlay) {
+        aboutModalOverlay.addEventListener('click', (e) => {
+            if (e.target === aboutModalOverlay) closeAboutModal();
+        });
+    }
+    if (confirmModalCancel) {
+        confirmModalCancel.addEventListener('click', () => closeConfirmModalWithResult(false));
+    }
+    if (confirmModalOk) {
+        confirmModalOk.addEventListener('click', () => closeConfirmModalWithResult(true));
+    }
+    if (confirmModalOverlay) {
+        confirmModalOverlay.addEventListener('click', (e) => {
+            if (e.target === confirmModalOverlay) {
+                closeConfirmModalWithResult(false);
+            }
+        });
+    }
+
     // --- Tabs ---
     $('tab-discover').addEventListener('click', () => switchTab('discover'));
     $('tab-favorites').addEventListener('click', () => switchTab('favorites'));
 
-    // --- РљР°С‚РµРіРѕСЂРёРё ---
+    // --- Категории ---
     renderCategoryFilters();
 
-    // --- РљРЅРѕРїРєРё СЃРІР°Р№РїР° ---
-    $('btn-like').addEventListener('click', () => handleButtonSwipe('right'));
-    $('btn-dislike').addEventListener('click', () => handleButtonSwipe('left'));
+    // --- Кнопки свайпа ---
+    $('btn-like').addEventListener('click', () => handleButtonSwipe('liked'));
+    $('btn-dislike').addEventListener('click', () => handleButtonSwipe('skipped'));
+    $('btn-watchlist').addEventListener('click', () => handleButtonSwipe('watchlist'));
+    $('btn-watched').addEventListener('click', () => handleButtonSwipe('watched'));
 
-    // --- РљРЅРѕРїРєР° В«Р—Р°РіСЂСѓР·РёС‚СЊ РµС‰С‘В» ---
+    // --- Кнопка «Загрузить ещё» ---
     $('btn-reset').addEventListener('click', () => {
-        state.page++;
         loadMovies();
     });
 
-    // --- РљРЅРѕРїРєР° В«РџРѕРїСЂРѕР±РѕРІР°С‚СЊ СЃРЅРѕРІР°В» ---
+    // --- Кнопка «Попробовать снова» ---
     $('btn-retry').addEventListener('click', () => loadMovies());
 
     // --- Popup ---
@@ -1748,16 +4108,47 @@ function init() {
         if (e.target === popupOverlay) closePopup();
     });
     $('popup-delete').addEventListener('click', () => {
-        if (currentPopupMovie) {
-            removeFromFavorites(currentPopupMovie.id);
+        if (currentPopupContext.movie && currentPopupContext.status) {
+            removeFromStatusList(currentPopupContext.movie.id, currentPopupContext.status);
             closePopup();
         }
     });
+    if (popupToggleWatchlist) {
+        popupToggleWatchlist.addEventListener('click', () => handlePopupStatusActionClick(popupToggleWatchlist));
+    }
+    if (popupToggleWatched) {
+        popupToggleWatched.addEventListener('click', () => handlePopupStatusActionClick(popupToggleWatched));
+    }
+
+    if (trailerClose) {
+        trailerClose.addEventListener('click', closeTrailerPlayer);
+    }
+    if (trailerOverlay) {
+        trailerOverlay.addEventListener('click', (e) => {
+            if (e.target === trailerOverlay) closeTrailerPlayer();
+        });
+    }
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && trailerOverlay?.classList.contains('active')) {
+            closeTrailerPlayer();
+        }
+    });
+
+    if (countryPickerClose) {
+        countryPickerClose.addEventListener('click', closeCountryPicker);
+    }
+    if (countryPickerOverlay) {
+        countryPickerOverlay.addEventListener('click', (e) => {
+            if (e.target === countryPickerOverlay) closeCountryPicker();
+        });
+    }
+
+    setupGestureNavigation();
 
     // --- Firebase Auth Observer ---
-    // РЎР»РµРґРёС‚ Р·Р° РІС…РѕРґРѕРј/РІС‹С…РѕРґРѕРј Рё Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё РїРµСЂРµРєР»СЋС‡Р°РµС‚ СЌРєСЂР°РЅС‹
+    // Следит за входом/выходом и автоматически переключает экраны
     setupAuthObserver();
 }
 
-// Р—Р°РїСѓСЃРє
+// Запуск
 document.addEventListener('DOMContentLoaded', init);

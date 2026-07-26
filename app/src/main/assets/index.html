@@ -17,6 +17,22 @@
 <body class="app-booting">
     <div id="app">
 
+        <!-- ===== ОБЪЯВЛЕНИЕ / ОБНОВЛЕНИЕ (текст управляется с сервера через /api/config) ===== -->
+        <div class="app-announcement" id="app-announcement" role="alert" aria-live="polite">
+            <span class="app-announcement-icon">🎬</span>
+            <div class="app-announcement-body">
+                <div class="app-announcement-title" id="app-announcement-title"></div>
+                <div class="app-announcement-text" id="app-announcement-text"></div>
+            </div>
+            <button type="button" class="app-announcement-action" id="app-announcement-action"></button>
+            <button type="button" class="app-announcement-close" id="app-announcement-close" aria-label="Закрыть">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+            </button>
+        </div>
+
         <!-- ===== AUTH SCREEN (Регистрация / Вход) ===== -->
         <div class="screen auth-screen active" id="screen-auth">
             <div class="auth-container">

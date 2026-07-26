@@ -192,6 +192,15 @@ DEFAULT_APP_CONFIG: dict = {
     "interstitial_min_interval_seconds": 180,
     "interstitial_grace_period_seconds": 60,
     "banner_max_height_dp": 50,
+    "announcement": {
+        "enabled": False,
+        "id": "",
+        "title": "Вышла новая версия",
+        "message": "Обновите FeelFilm в RuStore — там свежие функции и улучшения.",
+        "action_text": "Обновить",
+        "action_url": "https://www.rustore.ru/catalog/app/com.feelfilm.app",
+        "dismissible": True,
+    },
 }
 
 APP_CONFIG_PATH = Path(__file__).parent / "app_config.json"

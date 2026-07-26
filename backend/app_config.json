@@ -1,0 +1,18 @@
+{
+  "banner_enabled": true,
+  "interstitial_enabled": true,
+  "interstitial_every_n_opens": 8,
+  "interstitial_every_n_swipes": 15,
+  "interstitial_min_interval_seconds": 180,
+  "interstitial_grace_period_seconds": 60,
+  "banner_max_height_dp": 50,
+  "announcement": {
+    "enabled": false,
+    "id": "",
+    "title": "Вышла новая версия",
+    "message": "Обновите FeelFilm в RuStore — там свежие функции и улучшения.",
+    "action_text": "Обновить",
+    "action_url": "https://www.rustore.ru/catalog/app/com.feelfilm.app",
+    "dismissible": true
+  }
+}

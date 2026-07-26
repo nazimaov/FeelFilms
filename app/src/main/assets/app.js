@@ -1079,6 +1079,11 @@ const moodFilters = $('mood-filters');
 const countryPickerOverlay = $('country-picker-overlay');
 const countryPickerList = $('country-picker-list');
 const countryPickerClose = $('country-picker-close');
+const appAnnouncement = $('app-announcement');
+const appAnnouncementTitle = $('app-announcement-title');
+const appAnnouncementText = $('app-announcement-text');
+const appAnnouncementAction = $('app-announcement-action');
+const appAnnouncementClose = $('app-announcement-close');
 
 // ============================================================
 // FIREBASE AUTH — Регистрация и Вход
@@ -3805,6 +3810,91 @@ function openExternalUrl(url) {
     window.open(url, '_blank', 'noopener,noreferrer');
 }
 
+// ============================================================
+// ОБЪЯВЛЕНИЕ / УВЕДОМЛЕНИЕ ОБ ОБНОВЛЕНИИ
+// Текст и условия показа управляются с сервера через /api/config.
+// Чтобы показать баннер: в app_config.json выставить announcement.enabled = true
+// и задать уникальный announcement.id. Смена id заново показывает баннер тем,
+// кто ранее его закрыл.
+// ============================================================
+
+const ANNOUNCEMENT_DISMISS_KEY = 'feelfilm_dismissed_announcement_id';
+
+function getDismissedAnnouncementId() {
+    try {
+        return localStorage.getItem(ANNOUNCEMENT_DISMISS_KEY) || '';
+    } catch (error) {
+        return '';
+    }
+}
+
+function setDismissedAnnouncementId(id) {
+    try {
+        localStorage.setItem(ANNOUNCEMENT_DISMISS_KEY, id || '');
+    } catch (error) {
+        /* localStorage может быть недоступен — не критично */
+    }
+}
+
+function hideAnnouncement() {
+    if (appAnnouncement) {
+        appAnnouncement.classList.remove('active');
+    }
+}
+
+function renderAnnouncement(announcement) {
+    if (!appAnnouncement || !announcement || typeof announcement !== 'object') return;
+    if (announcement.enabled !== true) return;
+
+    const id = (announcement.id || '').toString().trim();
+    const title = (announcement.title || '').toString().trim();
+    const message = (announcement.message || '').toString().trim();
+    if (!title && !message) return;
+
+    // Уже закрыто этим пользователем — не показываем повторно, пока не сменится id.
+    if (id && getDismissedAnnouncementId() === id) return;
+
+    if (appAnnouncementTitle) appAnnouncementTitle.textContent = title;
+    if (appAnnouncementText) appAnnouncementText.textContent = message;
+
+    const actionUrl = (announcement.action_url || '').toString().trim();
+    const actionText = (announcement.action_text || '').toString().trim();
+    if (appAnnouncementAction) {
+        if (actionUrl && actionText) {
+            appAnnouncementAction.textContent = actionText;
+            appAnnouncementAction.onclick = () => openExternalUrl(actionUrl);
+        } else {
+            appAnnouncementAction.textContent = '';
+            appAnnouncementAction.onclick = null;
+        }
+    }
+
+    const dismissible = announcement.dismissible !== false;
+    if (appAnnouncementClose) {
+        appAnnouncementClose.style.display = dismissible ? '' : 'none';
+        appAnnouncementClose.onclick = () => {
+            if (id) setDismissedAnnouncementId(id);
+            hideAnnouncement();
+        };
+    }
+
+    appAnnouncement.classList.add('active');
+}
+
+async function loadRemoteAnnouncement() {
+    try {
+        const response = await fetch(`${BACKEND_API_BASE}/api/config`, {
+            method: 'GET',
+            cache: 'no-store',
+        });
+        if (!response.ok) return;
+        const config = await response.json();
+        renderAnnouncement(config?.announcement);
+    } catch (error) {
+        console.warn('Не удалось загрузить объявление об обновлении:', error);
+    }
+}
+
 function openContactEmail() {
     const email = APP_RUNTIME_CONFIG.contactEmail;
     if (!email) return;
@@ -4148,6 +4238,9 @@ function init() {
     // --- Firebase Auth Observer ---
     // Следит за входом/выходом и автоматически переключает экраны
     setupAuthObserver();
+
+    // --- Объявление об обновлении (управляется с сервера) ---
+    void loadRemoteAnnouncement();
 }
 
 // Запуск

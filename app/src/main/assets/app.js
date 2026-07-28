@@ -1055,6 +1055,7 @@ const popupToggleWatchlistText = $('popup-toggle-watchlist-text');
 const popupToggleWatched = $('popup-toggle-watched');
 const popupToggleWatchedText = $('popup-toggle-watched-text');
 const popupTrailerBtn = $('popup-trailer');
+const popupWatchBtn = $('popup-watch');
 const trailerOverlay = $('trailer-overlay');
 const trailerFrame = $('trailer-frame');
 const trailerClose = $('trailer-close');
@@ -1965,7 +1966,12 @@ function normalizeMovie(film) {
         countries,
         countriesText: countries.join(', '),
         type: film.type || contentType,
-        contentType
+        contentType,
+        // Поля для определения онлайн-доступности (кнопка «Смотреть»).
+        productionStatus: film.productionStatus || '',
+        completed: typeof film.completed === 'boolean' ? film.completed : undefined,
+        isTicketsAvailable: film.isTicketsAvailable === true,
+        kinopoiskHDId: film.kinopoiskHDId || null
     };
     normalized.categoryIds = inferMovieCategoryIds(normalized);
     return normalized;
@@ -2612,6 +2618,51 @@ function hidePopupTrailerButton() {
     popupTrailerBtn.onclick = null;
 }
 
+// Оценка онлайн-доступности фильма. Точного признака у Kinopoisk API нет,
+// поэтому используем надёжные негативные сигналы: фильм не завершён / ещё не
+// вышел / сейчас идёт в кинотеатрах — значит смотреть онлайн пока негде.
+// Наличие kinopoiskHDId — явный признак доступности (есть на Кинопоиск HD).
+function isMovieWatchable(movie) {
+    if (!movie) return false;
+    if (movie.kinopoiskHDId) return true;
+    const status = String(movie.productionStatus || '').toUpperCase();
+    if (movie.completed === false) return false;
+    if (status && status !== 'COMPLETED') return false; // ANNOUNCED / FILMING / *_PRODUCTION
+    if (movie.isTicketsAvailable === true) return false; // сейчас в прокате
+    return true; // вышедший фильм — скорее всего доступен онлайн
+}
+
+// Кнопка «Смотреть»: открывает страницу фильма на Кинопоиске, где есть
+// официальный блок «Смотреть» со ссылками на онлайн-кинотеатры (Окко, Иви,
+// КИОН, START, PREMIER и др.) — именно там, где фильм реально доступен.
+// Если смотреть онлайн негде — кнопка показывается неактивной.
+function setupPopupWatchButton(movie) {
+    if (!popupWatchBtn) return;
+    const kinopoiskId = Number(movie?.kinopoiskId || movie?.id);
+    if (!Number.isFinite(kinopoiskId) || kinopoiskId <= 0) {
+        popupWatchBtn.style.display = 'none';
+        popupWatchBtn.onclick = null;
+        return;
+    }
+
+    popupWatchBtn.style.display = '';
+    if (isMovieWatchable(movie)) {
+        popupWatchBtn.classList.remove('is-disabled');
+        popupWatchBtn.disabled = false;
+        popupWatchBtn.onclick = () => openExternalUrl(`https://www.kinopoisk.ru/film/${kinopoiskId}/`);
+    } else {
+        popupWatchBtn.classList.add('is-disabled');
+        popupWatchBtn.disabled = true;
+        popupWatchBtn.onclick = null;
+    }
+}
+
+function hidePopupWatchButton() {
+    if (!popupWatchBtn) return;
+    popupWatchBtn.style.display = 'none';
+    popupWatchBtn.onclick = null;
+}
+
 async function loadPopupTrailerForMovie(movieId) {
     if (!popupTrailerBtn) return;
     const requestId = ++currentTrailerRequestId;
@@ -2824,7 +2875,10 @@ async function fetchPreparedMoviesBatch(startPage, options = {}) {
     const normalizedExcludeIds = excludeIds instanceof Set ? excludeIds : new Set(excludeIds || []);
     const collected = new Map();
     let pageCursor = startPage;
-    const maxAttempts = state.selectedCountry ? 12 : 1;
+    // Идём вперёд по нескольким страницам, пока не наберём достаточно новых
+    // фильмов. Раньше здесь была всего 1 попытка — из-за этого лента считала,
+    // что «фильмы закончились», хотя дальше по страницам полно новых.
+    const maxAttempts = state.selectedCountry ? 12 : 8;
     const targetCount = state.selectedCountry ? 12 : 8;
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -2850,34 +2904,47 @@ async function fetchPreparedMoviesBatch(startPage, options = {}) {
     let movies = [...collected.values()];
 
     if (movies.length === 0) {
-        // Rescue pass: try broader fetch without strict recent cutoff,
-        // but keep seen/processed protection to avoid repeats.
+        // «Популярное» исчерпано (все новинки уже просмотрены). Добираем
+        // свежие фильмы из разных категорий — там другие фильмы, поэтому
+        // лента продолжается вместо «Фильмы закончились».
         const rescueCollected = new Map();
-        let rescuePage = 1;
-        const rescueAttempts = state.selectedCountry ? 8 : 4;
         const rescueTargetCount = state.selectedCountry ? 12 : 8;
 
-        for (let attempt = 0; attempt < rescueAttempts; attempt++) {
-            const fetched = await fetchCandidateMovies(rescuePage);
-            const unseen = filterUnseenMovies(fetched);
-            const filtered = applyCountryPreferenceFilter(unseen);
-            filtered.forEach((movie) => {
+        const addFresh = (fetched) => {
+            const fresh = applyCountryPreferenceFilter(filterUnseenMovies(fetched));
+            fresh.forEach((movie) => {
                 if (!movie || !Number.isFinite(movie.id)) return;
                 if (normalizedExcludeIds.has(movie.id)) return;
-                if (!rescueCollected.has(movie.id)) {
-                    rescueCollected.set(movie.id, movie);
-                }
+                if (!rescueCollected.has(movie.id)) rescueCollected.set(movie.id, movie);
             });
-            rescuePage += 1;
-            if (rescueCollected.size >= rescueTargetCount || fetched.length === 0) {
-                break;
+        };
+
+        // Перемешанный список категорий (без 'all' и 'series').
+        const categoryPool = state.allCategories
+            .map((category) => category.id)
+            .filter((id) => id && id !== 'all' && id !== 'series');
+        for (let i = categoryPool.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [categoryPool[i], categoryPool[j]] = [categoryPool[j], categoryPool[i]];
+        }
+
+        // Перебираем несколько категорий, по 1-2 страницы, пока не наберём.
+        for (const categoryId of categoryPool.slice(0, 6)) {
+            if (rescueCollected.size >= rescueTargetCount) break;
+            for (let page = 1; page <= 2; page++) {
+                let fetched;
+                try {
+                    fetched = await fetchMovies({ page, limit: 40, categories: [categoryId] });
+                } catch (error) {
+                    console.warn('Rescue: категория недоступна', categoryId, error);
+                    break;
+                }
+                addFresh(fetched);
+                if (fetched.length === 0 || rescueCollected.size >= rescueTargetCount) break;
             }
         }
 
         movies = [...rescueCollected.values()];
-        if (movies.length > 0) {
-            pageCursor = rescuePage;
-        }
     }
 
     movies = filterUnseenMovies(movies)
@@ -3526,13 +3593,15 @@ async function openPopup(movie, sourceStatus = null) {
     popupOverlay.classList.add('active');
     document.body.style.overflow = 'hidden';
     loadPopupTrailerForMovie(movie.id);
+    setupPopupWatchButton(movie);
 
     // Если не хватает ключевых данных карточки — дозагружаем детали с API.
     const needsDetails =
         !movie.description ||
         movie.description === DESCRIPTION_PLACEHOLDER ||
         !getPrimaryCountryName(movie) ||
-        !getMovieMetaText(movie);
+        !getMovieMetaText(movie) ||
+        movie.completed === undefined; // нужно узнать онлайн-доступность для кнопки «Смотреть»
     if (needsDetails) {
         const openedMovieId = movie.id;
         const details = await fetchMovieDetails(movie.id);
@@ -3563,6 +3632,14 @@ async function openPopup(movie, sourceStatus = null) {
             popupPoster.style.backgroundImage = `url('${movie.posterFull || movie.poster}')`;
             setPopupMetaChip(popupCountry, formatCountryWithFlag(movie));
             setPopupMetaChip(popupGenre, getMovieMetaText(movie));
+
+            // Поля доступности и обновление кнопки «Смотреть».
+            movie.productionStatus = details.productionStatus || movie.productionStatus;
+            movie.completed = typeof details.completed === 'boolean' ? details.completed : movie.completed;
+            movie.isTicketsAvailable =
+                typeof details.isTicketsAvailable === 'boolean' ? details.isTicketsAvailable : movie.isTicketsAvailable;
+            movie.kinopoiskHDId = details.kinopoiskHDId ?? movie.kinopoiskHDId;
+            setupPopupWatchButton(movie);
         }
     }
 }
@@ -3578,6 +3655,7 @@ function closePopup() {
     document.body.style.overflow = '';
     applyPopupActionButtons(null);
     hidePopupTrailerButton();
+    hidePopupWatchButton();
     closeTrailerPlayer();
     currentPopupContext = { movie: null, status: null };
 }

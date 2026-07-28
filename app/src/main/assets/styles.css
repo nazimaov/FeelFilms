@@ -1024,6 +1024,55 @@ body.app-booting #main-app {
     margin-bottom: 24px;
 }
 
+.watch-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    width: 100%;
+    padding: 14px 24px;
+    margin-bottom: 14px;
+    border: none;
+    border-radius: 50px;
+    background: var(--gradient-accent);
+    color: #fff;
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.2px;
+    cursor: pointer;
+    transition: var(--transition);
+    box-shadow: 0 8px 26px var(--accent-glow);
+}
+
+.watch-btn:hover {
+    filter: brightness(1.08);
+    box-shadow: 0 12px 32px var(--accent-glow);
+}
+
+.watch-btn:active {
+    transform: scale(0.98);
+}
+
+.watch-btn.is-disabled {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-muted);
+    box-shadow: none;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.watch-btn.is-disabled:hover {
+    filter: none;
+    box-shadow: none;
+}
+
+.watch-btn-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
 .popup-actions {
     display: flex;
     gap: 10px;

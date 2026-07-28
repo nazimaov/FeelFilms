@@ -6,3 +6,17 @@ dist/
 .vscode/
 backend/.env
 .venv/
+keystore.properties
+android-signing/*.jks
+
+# VK bot runtime data
+vk_bot/.env
+vk_bot/data/*.json
+vk_bot/data/*.log
+vk_bot/data/*.tmp
+vk_bot/data/*.log.*
+
+# Generated movie catalog (rebuilt daily on the server)
+backend/catalog.json
+backend/catalog.tmp
+backend/*.bak-*

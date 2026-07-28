@@ -13,10 +13,12 @@ from pydantic import BaseModel, Field
 
 try:
     from backend.kinopoisk_service import KinopoiskConfig, KinopoiskService, UpstreamServiceError
+    from backend.catalog_service import CatalogService
 except Exception:
     from kinopoisk_service import KinopoiskConfig, KinopoiskService, UpstreamServiceError
+    from catalog_service import CatalogService
 
-load_dotenv()
+load_dotenv(encoding="utf-8-sig")
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
@@ -131,6 +133,11 @@ service_config = KinopoiskConfig(
 )
 movie_service = KinopoiskService(service_config)
 
+# Локальный каталог: если собран (catalog.json), лента отдаётся из него, а не из
+# живого Kinopoisk — пользователи не тратят лимит API. Иначе — работа по-старому.
+CATALOG_PATH = Path(os.getenv("CATALOG_PATH", str(Path(__file__).parent / "catalog.json")))
+catalog_service = CatalogService(CATALOG_PATH)
+
 app = FastAPI(title="FeelFilms API", version="3.0.0")
 
 app.add_middleware(
@@ -228,6 +235,8 @@ def health() -> dict:
         "api_base": KINOPOISK_API_BASE,
         "connect_timeout_seconds": CONNECT_TIMEOUT_SECONDS,
         "timeout_seconds": REQUEST_TIMEOUT_SECONDS,
+        "catalog_available": catalog_service.available,
+        "catalog_size": catalog_service.size,
     }
 
 
@@ -247,6 +256,23 @@ def get_movies(
         page,
         limit,
     )
+    # Приоритет — локальный каталог (не тратит лимит Kinopoisk). Если каталог
+    # не покрывает запрос (нет таких фильмов) — откат на живой источник.
+    if catalog_service.available:
+        try:
+            result = catalog_service.get_movies(
+                mood=mood,
+                categories=categories,
+                content_type=content_type,
+                page=page,
+                limit=limit,
+            )
+            if result.get("catalog_total", 0) > 0:
+                return result
+            logger.info("Каталог не покрыл запрос — откат на живой источник.")
+        except Exception as exc:  # noqa: BLE001 — при сбое каталога не роняем ленту
+            logger.warning("Ошибка отдачи из каталога, откат на живой источник: %s", exc)
+
     try:
         return movie_service.get_movies(
             mood=mood,

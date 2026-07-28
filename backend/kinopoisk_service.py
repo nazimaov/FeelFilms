@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import copy
 import json
 import logging
 import os
+import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -14,6 +16,13 @@ import requests
 from requests.adapters import HTTPAdapter
 
 logger = logging.getLogger("feelfilms.kinopoisk")
+
+
+def _env_float(name: str, default: float) -> float:
+    try:
+        return float(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        return default
 
 
 class UpstreamServiceError(Exception):
@@ -80,6 +89,18 @@ class KinopoiskService:
         self._yt_cache: Dict[str, dict] = self._load_youtube_cache()
         self._yt_ydl = None  # lazy init
 
+        # Кэш ответов Kinopoisk. Ключ Kinopoisk один на всех пользователей, а у
+        # бесплатного тарифа суточный лимит запросов. Кэш отдаёт одинаковые
+        # данные из памяти, резко снижая число обращений к Kinopoisk и ошибки
+        # «сервер временно недоступен» при упоре в лимит.
+        self._cache_enabled = os.getenv("KP_CACHE_ENABLED", "1").strip() not in {"0", "false", "False", ""}
+        self._cache_ttl_lists = _env_float("KP_CACHE_TTL_LISTS", 3 * 3600.0)        # списки/коллекции — 3 ч
+        self._cache_ttl_details = _env_float("KP_CACHE_TTL_DETAILS", 24 * 3600.0)    # детали/видео/похожие — 24 ч
+        self._cache_ttl_premieres = _env_float("KP_CACHE_TTL_PREMIERES", 12 * 3600.0)  # премьеры — 12 ч
+        self._cache_max_entries = int(_env_float("KP_CACHE_MAX_ENTRIES", 5000.0))
+        self._cache: Dict[str, tuple] = {}
+        self._cache_lock = threading.Lock()
+
     @property
     def has_api_key(self) -> bool:
         return bool(self.config.api_key)
@@ -91,8 +112,56 @@ class KinopoiskService:
                 public_message="Movie provider is temporarily unavailable",
             )
 
+    # ------------------------------------------------------------------
+    # Кэш ответов Kinopoisk
+    # ------------------------------------------------------------------
+    def _cache_ttl(self, path: str) -> float:
+        """Срок жизни кэша в секундах в зависимости от типа запроса (0 = не кэшировать)."""
+        if not self._cache_enabled:
+            return 0.0
+        if path.endswith("/videos") or path.endswith("/similars"):
+            return self._cache_ttl_details
+        # Детали конкретного фильма: /api/v2.2/films/{id}
+        if re.match(r"^/api/v2\.\d+/films/\d+$", path):
+            return self._cache_ttl_details
+        if "/premieres" in path:
+            return self._cache_ttl_premieres
+        # Списки, коллекции, фильтры.
+        return self._cache_ttl_lists
+
+    def _cache_get(self, key: str):
+        now = time.time()
+        with self._cache_lock:
+            entry = self._cache.get(key)
+            if not entry:
+                return None
+            expiry, data = entry
+            if now >= expiry:
+                self._cache.pop(key, None)
+                return None
+            return copy.deepcopy(data)
+
+    def _cache_set(self, key: str, data: dict, ttl: float) -> None:
+        with self._cache_lock:
+            # Лёгкая уборка, чтобы память не росла бесконечно.
+            if len(self._cache) >= self._cache_max_entries:
+                now = time.time()
+                for k in [k for k, (exp, _) in self._cache.items() if now >= exp]:
+                    self._cache.pop(k, None)
+                while len(self._cache) >= self._cache_max_entries:
+                    self._cache.pop(next(iter(self._cache)), None)
+            self._cache[key] = (time.time() + ttl, copy.deepcopy(data))
+
     def _kinopoisk_get(self, path: str, params: Optional[dict] = None) -> dict:
         self._require_api_key()
+
+        ttl = self._cache_ttl(path)
+        cache_key = None
+        if ttl > 0:
+            cache_key = f"{path}|{json.dumps(params or {}, sort_keys=True, ensure_ascii=False)}"
+            cached = self._cache_get(cache_key)
+            if cached is not None:
+                return cached
 
         url = f"{self.config.api_base}{path}"
         headers = {
@@ -128,9 +197,13 @@ class KinopoiskService:
             )
 
         try:
-            return response.json()
+            result = response.json()
         except ValueError as exc:
             raise UpstreamServiceError(status_code=502, public_message="Invalid response from movie provider") from exc
+
+        if cache_key is not None:
+            self._cache_set(cache_key, result, ttl)
+        return result
 
     @staticmethod
     def _normalize_items(data: dict) -> List[dict]:

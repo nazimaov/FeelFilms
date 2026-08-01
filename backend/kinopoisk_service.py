@@ -346,6 +346,52 @@ class KinopoiskService:
         data = self._kinopoisk_get(f"/api/v2.2/films/{film_id}/similars")
         return data.get("items") or []
 
+    def search_movies(self, query: str, limit: int = 30) -> dict:
+        """Поиск по названию через Kinopoisk (search-by-keyword). Используется
+        как запасной вариант, когда локальный каталог не покрыл запрос.
+
+        Нормализует результаты под формат items приложения (как в каталоге).
+        Ответ кэшируется в _kinopoisk_get, поэтому повторные запросы не тратят
+        лимит Kinopoisk.
+        """
+        query = (query or "").strip()
+        if not query:
+            return {"source": "kinopoisk", "query": query, "total": 0, "items": []}
+
+        data = self._kinopoisk_get(
+            "/api/v2.1/films/search-by-keyword", {"keyword": query, "page": 1}
+        )
+        films = data.get("films") or []
+        items: List[dict] = []
+        for film in films[:limit]:
+            if not isinstance(film, dict):
+                continue
+            film_id = film.get("filmId") or film.get("kinopoiskId")
+            if not film_id:
+                continue
+            try:
+                rating_kp = float(film.get("rating"))
+            except (TypeError, ValueError):
+                rating_kp = None
+            items.append({
+                "kinopoiskId": film_id,
+                "filmId": film_id,
+                "nameRu": film.get("nameRu") or "",
+                "nameEn": film.get("nameEn") or "",
+                "nameOriginal": film.get("nameEn") or "",
+                "posterUrl": film.get("posterUrl") or "",
+                "posterUrlPreview": film.get("posterUrlPreview") or film.get("posterUrl") or "",
+                "ratingKinopoisk": rating_kp,
+                "ratingVoteCount": film.get("ratingVoteCount") or 0,
+                "year": film.get("year") or "",
+                "description": film.get("description") or "",
+                "filmLength": film.get("filmLength"),
+                "genres": film.get("genres") or [],
+                "countries": film.get("countries") or [],
+                "type": film.get("type") or "FILM",
+            })
+        return {"source": "kinopoisk", "query": query, "total": len(items), "items": items}
+
     @staticmethod
     def _is_youtube_url(url: str) -> bool:
         return bool(re.search(r"(?:youtube\.com|youtu\.be)", url, re.IGNORECASE))

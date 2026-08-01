@@ -1102,6 +1102,13 @@ const watchedSection = $('watched-section');
 const skippedSection = $('skipped-section');
 const favLoader = $('fav-loader');
 const emptyFavs = $('empty-favorites');
+const searchOverlay = $('search-overlay');
+const searchInput = $('search-input');
+const searchResults = $('search-results');
+const searchHint = $('search-hint');
+const searchLoader = $('search-loader');
+const searchEmpty = $('search-empty');
+const searchClearBtn = $('btn-search-clear');
 const popupOverlay = $('popup-overlay');
 const popupPoster = $('popup-poster');
 const popupTitle = $('popup-title');
@@ -1109,6 +1116,7 @@ const popupYear = $('popup-year');
 const popupRating = $('popup-rating');
 const popupCountry = $('popup-country');
 const popupGenre = $('popup-genre');
+const popupDuration = $('popup-duration');
 const popupDesc = $('popup-description');
 const popupToggleWatchlist = $('popup-toggle-watchlist');
 const popupToggleWatchlistText = $('popup-toggle-watchlist-text');
@@ -2004,6 +2012,26 @@ function setPopupMetaChip(node, value) {
     node.style.display = safe ? '' : 'none';
 }
 
+// Продолжительность фильма. Kinopoisk отдаёт её либо числом минут (каталог),
+// либо строкой «Ч:ММ» (поиск по ключевому слову) — поддерживаем оба формата.
+function formatMovieDuration(value) {
+    if (value === null || value === undefined || value === '') return '';
+    if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+        return `${Math.round(value)} мин`;
+    }
+    const raw = value.toString().trim();
+    const asNumber = Number(raw);
+    if (Number.isFinite(asNumber) && asNumber > 0) {
+        return `${Math.round(asNumber)} мин`;
+    }
+    const hm = raw.match(/^(\d{1,2}):(\d{2})$/);
+    if (hm) {
+        const minutes = parseInt(hm[1], 10) * 60 + parseInt(hm[2], 10);
+        if (minutes > 0) return `${minutes} мин`;
+    }
+    return '';
+}
+
 function inferContentType(rawType, genres) {
     const type = (rawType || '').toString().toUpperCase();
     const joinedGenres = genres.join(' ').toLowerCase();
@@ -2061,6 +2089,7 @@ function normalizeMovie(film) {
         ratingLabel,
         rating: ratingKinopoisk ?? ratingImdb,
         year: film.year || '',
+        filmLength: film.filmLength ?? film.filmLengthMinutes ?? null,
         description: film.description || film.shortDescription || '\u041e\u043f\u0438\u0441\u0430\u043d\u0438\u0435 \u043e\u0442\u0441\u0443\u0442\u0441\u0442\u0432\u0443\u0435\u0442',
         genres,
         genresText: genres.join(', '),
@@ -3648,6 +3677,17 @@ function getPopupStatusActionMeta(sourceStatus) {
             watched: null
         };
     }
+    if (sourceStatus === 'search') {
+        // Из поиска — добавление в «Хочу посмотреть» (по ТЗ).
+        return {
+            watchlist: {
+                targetStatus: 'watchlist',
+                label: 'Хочу посмотреть',
+                cssClass: 'is-watchlist'
+            },
+            watched: null
+        };
+    }
     return {
         watchlist: null,
         watched: null
@@ -3674,6 +3714,7 @@ function applyPopupStatusButton(button, textNode, meta) {
 
 function applyPopupActionButtons(sourceStatus) {
     const isSkipped = sourceStatus === 'skipped';
+    const isSearch = sourceStatus === 'search';
 
     const popupRestoreButton = $('popup-restore');
     if (popupRestoreButton) {
@@ -3682,8 +3723,9 @@ function applyPopupActionButtons(sourceStatus) {
 
     const popupDeleteButton = $('popup-delete');
     if (popupDeleteButton) {
-        // Для «Пропущенных» вместо удаления показываем «Вернуть в подборку».
-        popupDeleteButton.style.display = (sourceStatus && !isSkipped) ? '' : 'none';
+        // «Удалить из избранного» — только для сохранённых списков.
+        // Для «Пропущенных» вместо этого «Вернуть в подборку», для поиска — ничего.
+        popupDeleteButton.style.display = (sourceStatus && !isSkipped && !isSearch) ? '' : 'none';
     }
 
     const meta = getPopupStatusActionMeta(sourceStatus);
@@ -3703,6 +3745,7 @@ async function openPopup(movie, sourceStatus = null) {
     setPopupMetaChip(popupRating, getMovieRatingText(movie));
     setPopupMetaChip(popupCountry, formatCountryWithFlag(movie));
     setPopupMetaChip(popupGenre, getMovieMetaText(movie));
+    setPopupMetaChip(popupDuration, formatMovieDuration(movie.filmLength));
     popupDesc.textContent = pickBestDescription(null, movie);
     applyPopupActionButtons(sourceStatus);
 
@@ -3745,9 +3788,11 @@ async function openPopup(movie, sourceStatus = null) {
             movie.ratingAgeLimits = details.ratingAgeLimits || movie.ratingAgeLimits;
             movie.poster = details.poster || movie.poster;
             movie.posterFull = details.posterFull || movie.posterFull;
+            movie.filmLength = details.filmLength ?? movie.filmLength;
             popupPoster.style.backgroundImage = `url('${movie.posterFull || movie.poster}')`;
             setPopupMetaChip(popupCountry, formatCountryWithFlag(movie));
             setPopupMetaChip(popupGenre, getMovieMetaText(movie));
+            setPopupMetaChip(popupDuration, formatMovieDuration(movie.filmLength));
 
             // Поля доступности и обновление кнопки «Смотреть».
             movie.productionStatus = details.productionStatus || movie.productionStatus;
@@ -3797,6 +3842,126 @@ function restoreSkippedMovie(movie) {
     state.seenMovieIds.delete(movie.id);
     saveSeenMoviesCache();
     closePopup();
+}
+
+// ============================================================
+// Поиск фильмов
+// ============================================================
+
+let searchDebounceTimer = null;
+let searchRequestId = 0;
+const SEARCH_MIN_CHARS = 2;
+const SEARCH_DEBOUNCE_MS = 350;
+
+function setSearchState({ hint = false, loader = false, empty = false, results = false }) {
+    if (searchHint) searchHint.style.display = hint ? '' : 'none';
+    if (searchLoader) searchLoader.style.display = loader ? '' : 'none';
+    if (searchEmpty) searchEmpty.style.display = empty ? '' : 'none';
+    if (searchResults) searchResults.style.display = results ? '' : 'none';
+}
+
+function updateSearchClearButton() {
+    if (searchClearBtn) {
+        searchClearBtn.style.display = (searchInput && searchInput.value.trim()) ? '' : 'none';
+    }
+}
+
+function openSearch() {
+    if (!searchOverlay) return;
+    searchOverlay.classList.add('active');
+    document.body.style.overflow = 'hidden';
+    userMenu.classList.remove('active');
+    updateSearchClearButton();
+    if (!searchInput || !searchInput.value.trim()) {
+        setSearchState({ hint: true });
+    }
+    if (searchInput) setTimeout(() => searchInput.focus(), 60);
+}
+
+function closeSearch() {
+    if (!searchOverlay) return;
+    searchOverlay.classList.remove('active');
+    if (!popupOverlay.classList.contains('active')) {
+        document.body.style.overflow = '';
+    }
+}
+
+function renderSearchResults(movies) {
+    if (!searchResults) return;
+    searchResults.innerHTML = '';
+    movies.forEach((movie, i) => {
+        const card = document.createElement('div');
+        card.className = 'fav-card';
+        card.style.animationDelay = `${Math.min(i, 12) * 0.04}s`;
+        const ratingText = getMovieRatingText(movie);
+        const poster = getCardPosterUrl(movie) || movie.poster || '';
+        card.innerHTML = `
+            <img src="${poster}" alt="${movie.title}" loading="lazy">
+            <div class="fav-info">
+                <div class="fav-title">${movie.title}</div>
+                ${movie.year ? `<div class="fav-genres">${movie.year}</div>` : ''}
+                ${ratingText ? `<div class="fav-rating">⭐ ${ratingText}</div>` : ''}
+            </div>
+        `;
+        card.addEventListener('click', () => openPopup(movie, 'search'));
+        searchResults.appendChild(card);
+    });
+    setSearchState({ results: true });
+}
+
+async function runSearch(rawQuery) {
+    const query = (rawQuery || '').trim();
+    if (query.length < SEARCH_MIN_CHARS) {
+        if (searchResults) searchResults.innerHTML = '';
+        setSearchState({ hint: true });
+        return;
+    }
+    const requestId = ++searchRequestId;
+    setSearchState({ loader: true });
+    try {
+        const url = `${BACKEND_API_BASE}/api/search?query=${encodeURIComponent(query)}&limit=30`;
+        const response = await fetch(url, { headers: { Accept: 'application/json' }, cache: 'no-store' });
+        if (requestId !== searchRequestId) return; // пришёл более свежий запрос
+        if (!response.ok) throw new Error(`search HTTP ${response.status}`);
+        const data = await response.json();
+        const items = Array.isArray(data?.items) ? data.items : [];
+        const movies = items.map(normalizeMovie).filter((m) => Number.isFinite(m.id));
+        if (requestId !== searchRequestId) return;
+        if (movies.length === 0) {
+            if (searchResults) searchResults.innerHTML = '';
+            setSearchState({ empty: true });
+        } else {
+            renderSearchResults(movies);
+        }
+    } catch (err) {
+        if (requestId !== searchRequestId) return;
+        console.warn('Ошибка поиска:', err);
+        if (searchResults) searchResults.innerHTML = '';
+        setSearchState({ empty: true });
+    }
+}
+
+function handleSearchInput() {
+    updateSearchClearButton();
+    const value = searchInput ? searchInput.value : '';
+    if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+    if (value.trim().length < SEARCH_MIN_CHARS) {
+        if (searchResults) searchResults.innerHTML = '';
+        setSearchState({ hint: true });
+        return;
+    }
+    searchDebounceTimer = setTimeout(() => runSearch(value), SEARCH_DEBOUNCE_MS);
+}
+
+function clearSearchInput() {
+    if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+    if (searchInput) {
+        searchInput.value = '';
+        searchInput.focus();
+    }
+    updateSearchClearButton();
+    if (searchResults) searchResults.innerHTML = '';
+    setSearchState({ hint: true });
 }
 
 // ============================================================
@@ -4400,6 +4565,25 @@ function init() {
 
     // --- User Menu ---
     $('btn-user').addEventListener('click', toggleUserMenu);
+
+    // --- Поиск фильмов ---
+    $('btn-search').addEventListener('click', openSearch);
+    if ($('btn-search-back')) $('btn-search-back').addEventListener('click', closeSearch);
+    if (searchClearBtn) searchClearBtn.addEventListener('click', clearSearchInput);
+    if (searchInput) {
+        searchInput.addEventListener('input', handleSearchInput);
+        searchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+                runSearch(searchInput.value);
+                searchInput.blur();
+            } else if (e.key === 'Escape') {
+                closeSearch();
+            }
+        });
+    }
+
     $('btn-open-settings').addEventListener('click', () => {
         userMenu.classList.remove('active');
         openSettingsOverlay();

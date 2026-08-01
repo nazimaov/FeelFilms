@@ -288,6 +288,35 @@ def get_movies(
         raise HTTPException(status_code=500, detail="Internal server error") from exc
 
 
+@app.get("/api/search")
+def search_movies(
+    query: str = Query("", min_length=0),
+    limit: int = Query(30, ge=1, le=50),
+) -> dict:
+    q = (query or "").strip()
+    logger.info("GET /api/search query=%r limit=%s", q, limit)
+    if len(q) < 2:
+        return {"source": "catalog", "query": q, "total": 0, "items": []}
+
+    # Сначала локальный каталог (мгновенно, без расхода лимита Kinopoisk).
+    if catalog_service.available:
+        try:
+            result = catalog_service.search(q, limit=limit)
+            if result.get("total", 0) > 0:
+                return result
+        except Exception as exc:  # noqa: BLE001 — при сбое каталога пробуем живой источник
+            logger.warning("Ошибка поиска по каталогу, откат на Kinopoisk: %s", exc)
+
+    # Каталог не покрыл запрос — ищем через Kinopoisk (результат кэшируется).
+    try:
+        return movie_service.search_movies(q, limit=limit)
+    except UpstreamServiceError:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Ошибка поиска через Kinopoisk: %s", exc)
+        return {"source": "catalog", "query": q, "total": 0, "items": []}
+
+
 @app.get("/api/movies/{film_id}")
 def get_movie_details(film_id: int) -> dict:
     logger.info("GET /api/movies/%s", film_id)

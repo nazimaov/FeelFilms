@@ -325,7 +325,12 @@ const state = {
     watchedDetailsById: new Map(),
     watchedVisibleCount: 12,
     watchedDetailsInFlight: new Set(),
-    skippedIds: new Set(), // Отклоненные фильмы
+    skippedIds: new Set(), // Отклоненные фильмы («Пропущенные»)
+    skippedMovies: [],
+    skippedOrderIds: [],
+    skippedDetailsById: new Map(),
+    skippedVisibleCount: 12,
+    skippedDetailsInFlight: new Set(),
     seenMovieIds: new Set(), // Просмотренные (не показывать повторно)
     allCategories: CATEGORY_DEFINITIONS,
     selectedCategoryIds: new Set(),
@@ -497,6 +502,16 @@ function saveDiscoverFeedCache() {
     }
 }
 
+function clearDiscoverFeedCache() {
+    const key = getDiscoverFeedCacheKey();
+    if (!key) return;
+    try {
+        localStorage.removeItem(key);
+    } catch (err) {
+        console.warn('Не удалось очистить кеш ленты:', err);
+    }
+}
+
 function restoreDiscoverFeedFromCache() {
     const cached = loadDiscoverFeedCache();
     if (!cached) return false;
@@ -587,6 +602,12 @@ function syncWatchedArray() {
         .filter(Boolean);
 }
 
+function syncSkippedArray() {
+    state.skippedMovies = state.skippedOrderIds
+        .map((id) => state.skippedDetailsById.get(id))
+        .filter(Boolean);
+}
+
 function applyFavoritesIds(ids) {
     state.favoriteOrderIds = [...ids];
     state.favoriteIds = new Set(ids);
@@ -635,6 +656,22 @@ function applyWatchedDetails(detailsMapLike) {
     syncWatchedArray();
 }
 
+function applySkippedIds(ids) {
+    state.skippedOrderIds = [...ids];
+    state.skippedIds = new Set(ids);
+    syncSkippedArray();
+}
+
+function applySkippedDetails(detailsMapLike) {
+    state.skippedDetailsById = new Map();
+    Object.entries(detailsMapLike || {}).forEach(([rawId, movie]) => {
+        const id = Number(rawId);
+        if (!Number.isFinite(id) || !movie) return;
+        state.skippedDetailsById.set(id, movie);
+    });
+    syncSkippedArray();
+}
+
 function upsertFavoriteDetail(movie) {
     if (!movie || !Number.isFinite(movie.id)) return;
     state.favoriteDetailsById.set(movie.id, movie);
@@ -653,6 +690,12 @@ function upsertWatchedDetail(movie) {
     syncWatchedArray();
 }
 
+function upsertSkippedDetail(movie) {
+    if (!movie || !Number.isFinite(movie.id)) return;
+    state.skippedDetailsById.set(movie.id, movie);
+    syncSkippedArray();
+}
+
 function isMovieProcessed(movieId) {
     return state.favoriteIds.has(movieId)
         || state.likedIds.has(movieId)
@@ -665,6 +708,7 @@ function applyFavoritesState() {
     syncFavoritesArray();
     syncLikedArray();
     syncWatchedArray();
+    syncSkippedArray();
     computePreferences();
     updateFavBadge();
     renderFavorites();
@@ -917,18 +961,25 @@ function saveWatchedCache() {
 
 function loadSkippedCache() {
     const key = getSkippedCacheKey();
-    if (!key) return new Set();
+    if (!key) return { ids: [], details: {} };
     try {
         const raw = localStorage.getItem(key);
-        if (!raw) return new Set();
+        if (!raw) return { ids: [], details: {} };
         const parsed = JSON.parse(raw);
-        const ids = Array.isArray(parsed)
-            ? parsed.map((id) => Number(id)).filter((id) => Number.isFinite(id))
+        // Обратная совместимость: старый формат — просто массив ID без деталей.
+        if (Array.isArray(parsed)) {
+            const ids = parsed.map((id) => Number(id)).filter((id) => Number.isFinite(id));
+            return { ids, details: {} };
+        }
+        if (!parsed || typeof parsed !== 'object') return { ids: [], details: {} };
+        const ids = Array.isArray(parsed.ids)
+            ? parsed.ids.map((id) => Number(id)).filter((id) => Number.isFinite(id))
             : [];
-        return new Set(ids);
+        const details = parsed.details && typeof parsed.details === 'object' ? parsed.details : {};
+        return { ids, details };
     } catch (err) {
         console.warn('Не удалось прочитать кеш skipped:', err);
-        return new Set();
+        return { ids: [], details: {} };
     }
 }
 
@@ -936,7 +987,14 @@ function saveSkippedCache() {
     const key = getSkippedCacheKey();
     if (!key) return;
     try {
-        localStorage.setItem(key, JSON.stringify([...state.skippedIds]));
+        const details = {};
+        state.skippedDetailsById.forEach((movie, id) => {
+            details[id] = movie;
+        });
+        localStorage.setItem(key, JSON.stringify({
+            ids: state.skippedOrderIds,
+            details
+        }));
     } catch (err) {
         console.warn('Не удалось сохранить кеш skipped:', err);
     }
@@ -1037,9 +1095,11 @@ const favBadge = $('fav-badge');
 const watchlistGrid = $('watchlist-grid');
 const likedGrid = $('liked-grid');
 const watchedGrid = $('watched-grid');
+const skippedGrid = $('skipped-grid');
 const watchlistSection = $('watchlist-section');
 const likedSection = $('liked-section');
 const watchedSection = $('watched-section');
+const skippedSection = $('skipped-section');
 const favLoader = $('fav-loader');
 const emptyFavs = $('empty-favorites');
 const popupOverlay = $('popup-overlay');
@@ -1218,11 +1278,12 @@ function showMainApp(user, forceReload = false) {
     const watchlistCache = loadFavoritesCache();
     const likedCache = loadLikedCache();
     const watchedCache = loadWatchedCache();
+    const skippedCache = loadSkippedCache();
     const resolvedStatuses = resolveStatusConflicts({
         watchlistIds: watchlistCache.ids,
         likedIds: likedCache.ids,
         watchedIds: watchedCache.ids,
-        skippedIds: [...loadSkippedCache()]
+        skippedIds: skippedCache.ids
     });
     applyFavoritesIds(resolvedStatuses.watchlistIds);
     applyFavoriteDetails(watchlistCache.details);
@@ -1233,7 +1294,9 @@ function showMainApp(user, forceReload = false) {
     applyWatchedIds(resolvedStatuses.watchedIds);
     applyWatchedDetails(watchedCache.details);
     state.watchedVisibleCount = FAVORITES_PAGE_SIZE;
-    state.skippedIds = new Set(resolvedStatuses.skippedIds);
+    applySkippedIds(resolvedStatuses.skippedIds);
+    applySkippedDetails(skippedCache.details);
+    state.skippedVisibleCount = FAVORITES_PAGE_SIZE;
     applyFavoritesState();
 
     const shouldLoadDiscover = forceReload || state.movies.length === 0;
@@ -1301,6 +1364,11 @@ function showAuthScreen() {
     state.watchedDetailsInFlight.clear();
     state.watchedVisibleCount = FAVORITES_PAGE_SIZE;
     state.skippedIds.clear();
+    state.skippedMovies = [];
+    state.skippedOrderIds = [];
+    state.skippedDetailsById.clear();
+    state.skippedDetailsInFlight.clear();
+    state.skippedVisibleCount = FAVORITES_PAGE_SIZE;
     state.preferences = {
         categoryWeights: {},
         typeWeights: {},
@@ -1323,6 +1391,7 @@ function showAuthScreen() {
     if (watchlistGrid) watchlistGrid.innerHTML = '';
     if (likedGrid) likedGrid.innerHTML = '';
     if (watchedGrid) watchedGrid.innerHTML = '';
+    if (skippedGrid) skippedGrid.innerHTML = '';
     renderCategoryFilters();
     updateFavBadge();
 }
@@ -1429,6 +1498,17 @@ async function ensureWatchedDetailsForVisible() {
     );
 }
 
+async function ensureSkippedDetailsForVisible() {
+    const visibleIds = state.skippedOrderIds.slice(0, state.skippedVisibleCount);
+    await ensureDetailsForVisible(
+        visibleIds,
+        state.skippedDetailsById,
+        state.skippedDetailsInFlight,
+        upsertSkippedDetail,
+        saveSkippedCache
+    );
+}
+
 function renderListSkeleton(grid, count = FAVORITES_PAGE_SIZE) {
     if (!grid) return;
     grid.innerHTML = '';
@@ -1451,9 +1531,13 @@ function renderFavoritesSkeleton(count = 4) {
     if (watchlistSection) watchlistSection.style.display = '';
     if (likedSection) likedSection.style.display = '';
     if (watchedSection) watchedSection.style.display = '';
+    if (skippedSection) skippedSection.style.display = state.skippedOrderIds.length > 0 ? '' : 'none';
     renderListSkeleton(watchlistGrid, count);
     renderListSkeleton(likedGrid, count);
     renderListSkeleton(watchedGrid, count);
+    if (state.skippedOrderIds.length > 0) {
+        renderListSkeleton(skippedGrid, count);
+    }
 }
 
 function removeFromWatchlistLocal(movieId) {
@@ -1484,7 +1568,10 @@ function removeFromWatchedLocal(movieId) {
 function removeFromSkippedLocal(movieId) {
     if (!Number.isFinite(movieId)) return;
     state.skippedIds.delete(movieId);
+    state.skippedOrderIds = state.skippedOrderIds.filter((id) => id !== movieId);
+    state.skippedDetailsById.delete(movieId);
     state.interactions.dislikedMovieIds.delete(movieId);
+    syncSkippedArray();
 }
 
 function removeMovieFromAllLocalStatuses(movieId) {
@@ -1526,6 +1613,9 @@ function addToWatchedLocal(movie) {
 function addToSkippedLocal(movie) {
     if (!movie || !Number.isFinite(movie.id)) return;
     state.skippedIds.add(movie.id);
+    state.skippedOrderIds = [movie.id, ...state.skippedOrderIds.filter((id) => id !== movie.id)];
+    upsertSkippedDetail(movie);
+    state.skippedVisibleCount = Math.max(state.skippedVisibleCount, FAVORITES_PAGE_SIZE);
     markMovieDisliked(movie.id);
 }
 
@@ -1553,7 +1643,7 @@ function getCurrentStatusSnapshot() {
         watchlistIds: [...state.favoriteOrderIds],
         likedIds: [...state.likedOrderIds],
         watchedIds: [...state.watchedOrderIds],
-        skippedIds: [...state.skippedIds]
+        skippedIds: [...state.skippedOrderIds]
     });
 }
 
@@ -1562,7 +1652,7 @@ function applyCloudStatusesToLocalState(statuses) {
     applyFavoritesIds(resolved.watchlistIds);
     applyLikedIds(resolved.likedIds);
     applyWatchedIds(resolved.watchedIds);
-    state.skippedIds = new Set(resolved.skippedIds);
+    applySkippedIds(resolved.skippedIds);
 
     const watchlistPruned = new Map();
     resolved.watchlistIds.forEach((id) => {
@@ -1587,6 +1677,14 @@ function applyCloudStatusesToLocalState(statuses) {
     });
     state.watchedDetailsById = watchedPruned;
     syncWatchedArray();
+
+    const skippedPruned = new Map();
+    resolved.skippedIds.forEach((id) => {
+        const movie = state.skippedDetailsById.get(id);
+        if (movie) skippedPruned.set(id, movie);
+    });
+    state.skippedDetailsById = skippedPruned;
+    syncSkippedArray();
 }
 
 async function pushStatusesSnapshotToCloud(statuses) {
@@ -1742,11 +1840,12 @@ async function loadFavoritesFromFirestore() {
     const watchlistCache = loadFavoritesCache();
     const likedCache = loadLikedCache();
     const watchedCache = loadWatchedCache();
+    const skippedCache = loadSkippedCache();
     const resolvedCacheStatuses = resolveStatusConflicts({
         watchlistIds: watchlistCache.ids,
         likedIds: likedCache.ids,
         watchedIds: watchedCache.ids,
-        skippedIds: [...loadSkippedCache()]
+        skippedIds: skippedCache.ids
     });
     applyFavoritesIds(resolvedCacheStatuses.watchlistIds);
     applyFavoriteDetails(watchlistCache.details);
@@ -1757,7 +1856,9 @@ async function loadFavoritesFromFirestore() {
     applyWatchedIds(resolvedCacheStatuses.watchedIds);
     applyWatchedDetails(watchedCache.details);
     state.watchedVisibleCount = FAVORITES_PAGE_SIZE;
-    state.skippedIds = new Set(resolvedCacheStatuses.skippedIds);
+    applySkippedIds(resolvedCacheStatuses.skippedIds);
+    applySkippedDetails(skippedCache.details);
+    state.skippedVisibleCount = FAVORITES_PAGE_SIZE;
     favLoader.style.display = 'none';
 
     const hasLocalStatuses = state.favoriteOrderIds.length > 0 || state.likedOrderIds.length > 0 || state.watchedOrderIds.length > 0;
@@ -2529,22 +2630,6 @@ async function fetchMovieTrailers(filmId) {
     }
 }
 
-function extractYouTubeId(rawUrl) {
-    const url = (rawUrl || '').toString().trim();
-    if (!url) return '';
-    const patterns = [
-        /(?:youtube\.com\/embed\/)([A-Za-z0-9_-]{6,})/i,
-        /(?:youtube\.com\/watch\?[^#]*\bv=)([A-Za-z0-9_-]{6,})/i,
-        /(?:youtu\.be\/)([A-Za-z0-9_-]{6,})/i,
-        /(?:youtube\.com\/shorts\/)([A-Za-z0-9_-]{6,})/i
-    ];
-    for (const pattern of patterns) {
-        const match = url.match(pattern);
-        if (match && match[1]) return match[1];
-    }
-    return '';
-}
-
 function pickPreferredTrailer(trailers) {
     if (!Array.isArray(trailers) || trailers.length === 0) return null;
     return trailers.find((item) => buildEmbedUrl(item)) || null;
@@ -2566,9 +2651,16 @@ function openExternalTrailerUrl(url) {
 function buildEmbedUrl(trailer) {
     const rawUrl = (trailer?.url || '').toString().trim();
     if (!rawUrl) return '';
-    const youtubeId = extractYouTubeId(rawUrl);
-    if (youtubeId) {
-        return `https://www.youtube-nocookie.com/embed/${encodeURIComponent(youtubeId)}?autoplay=1&playsinline=1&rel=0&modestbranding=1`;
+    // YouTube убран (в РФ недоступен) — трейлеры проигрываем из виджета
+    // Kinopoisk или из RuTube (встраиваемый плеер, работает в России).
+    if (/rutube\.ru\/play\/embed\//i.test(rawUrl)) {
+        try {
+            const url = new URL(rawUrl);
+            url.searchParams.set('autoplay', '1');
+            return url.toString();
+        } catch {
+            return rawUrl;
+        }
     }
     // Kinopoisk own widget: https://widgets.kinopoisk.ru/discovery/trailer/{id}?...
     // Iframe-embeddable, gives Russian dub. Some CDN URLs (trailers.s3.mds.yandex.net)
@@ -3421,15 +3513,18 @@ function renderFavorites() {
     const hasWatchlist = state.favoriteOrderIds.length > 0;
     const hasLiked = state.likedOrderIds.length > 0;
     const hasWatched = state.watchedOrderIds.length > 0;
+    const hasSkipped = state.skippedOrderIds.length > 0;
 
     if (watchlistSection) watchlistSection.style.display = hasWatchlist ? '' : 'none';
     if (likedSection) likedSection.style.display = hasLiked ? '' : 'none';
     if (watchedSection) watchedSection.style.display = hasWatched ? '' : 'none';
+    if (skippedSection) skippedSection.style.display = hasSkipped ? '' : 'none';
 
-    if (!hasWatchlist && !hasLiked && !hasWatched) {
+    if (!hasWatchlist && !hasLiked && !hasWatched && !hasSkipped) {
         if (watchlistGrid) watchlistGrid.innerHTML = '';
         if (likedGrid) likedGrid.innerHTML = '';
         if (watchedGrid) watchedGrid.innerHTML = '';
+        if (skippedGrid) skippedGrid.innerHTML = '';
         emptyFavs.style.display = '';
         emptyFavs.classList.remove('hidden');
         return;
@@ -3474,9 +3569,22 @@ function renderFavorites() {
         }
     );
 
+    renderStatusSection(
+        skippedGrid,
+        state.skippedOrderIds,
+        state.skippedDetailsById,
+        'skipped',
+        state.skippedVisibleCount,
+        () => {
+            state.skippedVisibleCount += FAVORITES_PAGE_SIZE;
+            renderFavorites();
+        }
+    );
+
     ensureFavoriteDetailsForVisible();
     ensureLikedDetailsForVisible();
     ensureWatchedDetailsForVisible();
+    ensureSkippedDetailsForVisible();
 }
 
 // ============================================================
@@ -3565,9 +3673,17 @@ function applyPopupStatusButton(button, textNode, meta) {
 }
 
 function applyPopupActionButtons(sourceStatus) {
+    const isSkipped = sourceStatus === 'skipped';
+
+    const popupRestoreButton = $('popup-restore');
+    if (popupRestoreButton) {
+        popupRestoreButton.style.display = isSkipped ? '' : 'none';
+    }
+
     const popupDeleteButton = $('popup-delete');
     if (popupDeleteButton) {
-        popupDeleteButton.style.display = sourceStatus ? '' : 'none';
+        // Для «Пропущенных» вместо удаления показываем «Вернуть в подборку».
+        popupDeleteButton.style.display = (sourceStatus && !isSkipped) ? '' : 'none';
     }
 
     const meta = getPopupStatusActionMeta(sourceStatus);
@@ -3668,6 +3784,19 @@ function handlePopupStatusActionClick(button) {
     setMovieStatus(currentPopupContext.movie, targetStatus);
     currentPopupContext.status = targetStatus;
     applyPopupActionButtons(currentPopupContext.status);
+}
+
+/**
+ * Вернуть пропущенный фильм обратно в общую подборку:
+ * убираем его из «Пропущенных» и снимаем пометку «показан»,
+ * чтобы он снова мог попасть в ленту и рекомендации.
+ */
+function restoreSkippedMovie(movie) {
+    if (!movie || !Number.isFinite(movie.id)) return;
+    removeFromStatusList(movie.id, 'skipped');
+    state.seenMovieIds.delete(movie.id);
+    saveSeenMoviesCache();
+    closePopup();
 }
 
 // ============================================================
@@ -4077,6 +4206,74 @@ async function clearStatusListWithConfirmation(status) {
     void clearStatusListInCloud(status);
 }
 
+async function clearSkippedInCloud() {
+    if (!state.user) return;
+    try {
+        await setDoc(getUserDocRef(), { skipped: [], disliked: [] }, { merge: true });
+    } catch (err) {
+        console.error('Не удалось сбросить историю подбора в Firestore:', err);
+    }
+}
+
+/**
+ * Сброс подбора: очищает историю свайпов (пропущенные), историю показов
+ * и сигналы персонализации, затем формирует ленту заново.
+ * Сохранённые списки «Избранного» (Хочу посмотреть / Понравилось / Просмотрено)
+ * не затрагиваются — у них есть отдельные кнопки очистки.
+ */
+function performDiscoveryReset() {
+    const hadSkipped = state.skippedOrderIds.length > 0 || state.skippedIds.size > 0;
+
+    // Пропущенные (свайпы влево).
+    state.skippedIds.clear();
+    state.skippedOrderIds = [];
+    state.skippedDetailsById.clear();
+    state.skippedDetailsInFlight.clear();
+    state.skippedVisibleCount = FAVORITES_PAGE_SIZE;
+    syncSkippedArray();
+
+    // История показов и сигналы персонализации.
+    state.seenMovieIds = new Set();
+    saveSeenMoviesCache();
+    state.interactions = createEmptyInteractionsState();
+    saveInteractionsCache();
+
+    // Пересобираем предпочтения по оставшимся спискам и чистим кеши.
+    saveSkippedCache();
+    clearDiscoverFeedCache();
+
+    // Текущая лента сбрасывается и грузится заново, как при первом запуске.
+    state.movies = [];
+    state.currentIndex = 0;
+    state.page = 1;
+    state.isPrefetching = false;
+    if (cardStack) cardStack.innerHTML = '';
+
+    applyFavoritesState();
+
+    if (hadSkipped) {
+        void clearSkippedInCloud();
+    }
+
+    switchTab('discover');
+    loadMovies();
+}
+
+async function resetDiscoveryWithConfirmation() {
+    const confirmed = await openConfirmModal({
+        title: 'Сбросить подбор',
+        message: 'Вы уверены, что хотите сбросить подбор? История ваших свайпов будет очищена.',
+        confirmText: 'Сбросить',
+        cancelText: 'Отмена',
+        showCancel: true,
+        danger: true
+    });
+    if (!confirmed) return;
+
+    closeSettingsOverlay();
+    performDiscoveryReset();
+}
+
 function setupGestureNavigation() {
     const favoritesScreen = $('screen-favorites');
     const popup = $('popup');
@@ -4224,6 +4421,7 @@ function init() {
     $('btn-clear-watchlist').addEventListener('click', () => void clearStatusListWithConfirmation('watchlist'));
     $('btn-clear-liked').addEventListener('click', () => void clearStatusListWithConfirmation('liked'));
     $('btn-clear-watched').addEventListener('click', () => void clearStatusListWithConfirmation('watched'));
+    $('btn-reset-discovery').addEventListener('click', () => void resetDiscoveryWithConfirmation());
 
     if (settingsOverlay) {
         settingsOverlay.addEventListener('click', (e) => {
@@ -4279,6 +4477,11 @@ function init() {
         if (currentPopupContext.movie && currentPopupContext.status) {
             removeFromStatusList(currentPopupContext.movie.id, currentPopupContext.status);
             closePopup();
+        }
+    });
+    $('popup-restore').addEventListener('click', () => {
+        if (currentPopupContext.movie && currentPopupContext.status === 'skipped') {
+            restoreSkippedMovie(currentPopupContext.movie);
         }
     });
     if (popupToggleWatchlist) {

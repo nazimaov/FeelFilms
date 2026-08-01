@@ -89,6 +89,14 @@ class KinopoiskService:
         self._yt_cache: Dict[str, dict] = self._load_youtube_cache()
         self._yt_ydl = None  # lazy init
 
+        # RuTube: замена YouTube (YouTube в РФ недоступен). Ищем трейлер через
+        # открытый поиск RuTube (без токена) и отдаём встраиваемый плеер
+        # https://rutube.ru/play/embed/{id}. Работает в России, играет в приложении.
+        self._rutube_search_enabled = os.getenv("ENABLE_RUTUBE_SEARCH", "1").strip() not in {"0", "false", "False", ""}
+        self._rutube_cache_path = Path(os.getenv("RUTUBE_TRAILER_CACHE_PATH", "/opt/feelfilms/backend/rutube_trailer_cache.json"))
+        self._rutube_cache_lock = threading.Lock()
+        self._rutube_cache: Dict[str, dict] = self._load_rutube_cache()
+
         # Кэш ответов Kinopoisk. Ключ Kinopoisk один на всех пользователей, а у
         # бесплатного тарифа суточный лимит запросов. Кэш отдаёт одинаковые
         # данные из памяти, резко снижая число обращений к Kinopoisk и ошибки
@@ -338,6 +346,14 @@ class KinopoiskService:
         data = self._kinopoisk_get(f"/api/v2.2/films/{film_id}/similars")
         return data.get("items") or []
 
+    @staticmethod
+    def _is_youtube_url(url: str) -> bool:
+        return bool(re.search(r"(?:youtube\.com|youtu\.be)", url, re.IGNORECASE))
+
+    @staticmethod
+    def _is_kinopoisk_widget(url: str) -> bool:
+        return bool(re.search(r"widgets\.kinopoisk\.ru/.+trailer", url, re.IGNORECASE))
+
     def get_movie_videos(self, film_id: int) -> List[dict]:
         normalized: List[dict] = []
         try:
@@ -349,21 +365,28 @@ class KinopoiskService:
                 url = (item.get("url") or "").strip()
                 if not url:
                     continue
-                name = (item.get("name") or "").strip()
                 site = (item.get("site") or "").strip().upper()
+                # YouTube убираем полностью — по требованию заменяем на VK Video.
+                if site == "YOUTUBE" or self._is_youtube_url(url):
+                    continue
+                name = (item.get("name") or "").strip()
                 normalized.append({"url": url, "name": name, "site": site})
         except UpstreamServiceError:
-            # Kinopoisk failed — we still try YouTube search below.
+            # Kinopoisk failed — we still try VK search below.
             pass
 
-        # Only fall back to YouTube search if Kinopoisk returned nothing at all.
-        # This preserves Russian-dubbed Kinopoisk widgets whenever they exist.
-        if not normalized and self._yt_search_enabled:
-            youtube_item = self._find_youtube_trailer(film_id)
-            if youtube_item:
-                normalized.insert(0, youtube_item)
+        # Встраиваемый в приложение трейлер — это виджет Kinopoisk (рус. дубляж).
+        # Если его нет, ищем трейлер в RuTube (замена бывшего YouTube-fallback).
+        has_playable = any(self._is_kinopoisk_widget(v["url"]) for v in normalized)
+        if not has_playable and self._rutube_search_enabled:
+            rutube_item = self._find_rutube_trailer(film_id)
+            if rutube_item:
+                normalized.insert(0, rutube_item)
 
-        normalized.sort(key=lambda v: 0 if v["site"] == "YOUTUBE" else 1)
+        # Порядок: сначала встраиваемые (виджет Kinopoisk и RuTube), потом остальное.
+        normalized.sort(
+            key=lambda v: 0 if (self._is_kinopoisk_widget(v["url"]) or v["site"] == "RUTUBE") else 1
+        )
         return normalized
 
     # ------------------------------------------------------------------
@@ -478,6 +501,137 @@ class KinopoiskService:
             "url": f"https://www.youtube.com/watch?v={video_id}",
             "name": "YouTube trailer",
             "site": "YOUTUBE",
+        }
+
+    # ------------------------------------------------------------------
+    # RuTube search (замена YouTube — работает в РФ, без токена)
+    # ------------------------------------------------------------------
+
+    def _load_rutube_cache(self) -> Dict[str, dict]:
+        try:
+            if self._rutube_cache_path.exists():
+                with self._rutube_cache_path.open("r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if isinstance(data, dict):
+                    return data
+        except Exception as exc:
+            logger.warning("Failed to load RuTube trailer cache: %s", exc)
+        return {}
+
+    def _save_rutube_cache_locked(self) -> None:
+        try:
+            self._rutube_cache_path.parent.mkdir(parents=True, exist_ok=True)
+            tmp_path = self._rutube_cache_path.with_suffix(".tmp")
+            with tmp_path.open("w", encoding="utf-8") as f:
+                json.dump(self._rutube_cache, f, ensure_ascii=False)
+            tmp_path.replace(self._rutube_cache_path)
+        except Exception as exc:
+            logger.warning("Failed to save RuTube trailer cache: %s", exc)
+
+    def _build_rutube_query(self, details: dict) -> str:
+        # RuTube — русскоязычный, предпочитаем русское название и слово «трейлер».
+        name_ru = (details.get("nameRu") or "").strip()
+        name_en = (details.get("nameEn") or details.get("nameOriginal") or "").strip()
+        year = details.get("year")
+        year_part = f" {year}" if year else ""
+        if name_ru:
+            return f"{name_ru} трейлер{year_part}"
+        if name_en:
+            return f"{name_en} трейлер{year_part}"
+        return ""
+
+    def _rutube_search(
+        self,
+        query: str,
+        min_duration: int = 20,
+        max_duration: int = 420,
+    ) -> Optional[dict]:
+        """Ищет трейлер в RuTube через открытый поиск (без токена).
+
+        Возвращает ``{"id": video_id, "name": title}`` или ``None``. Отсекает
+        слишком короткие/длинные ролики (чтобы не подцепить полный фильм) и
+        предпочитает видео со словом «трейлер»/«trailer» в названии.
+        """
+        if not query:
+            return None
+        try:
+            resp = self._session.get(
+                "https://rutube.ru/api/search/video/",
+                params={"query": query},
+                headers={
+                    "Accept": "application/json",
+                    # RuTube отдаёт 403 на запросы без браузерного User-Agent.
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+                },
+                timeout=(self.config.connect_timeout_seconds, self.config.read_timeout_seconds),
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        except (requests.RequestException, ValueError) as exc:
+            logger.warning("RuTube search failed for %r: %s", query, exc)
+            return None
+
+        results = data.get("results") or []
+        best = None  # (score, item)
+        for item in results:
+            video_id = (item.get("id") or "").strip()
+            if not video_id:
+                continue
+            duration = item.get("duration") or 0
+            if not (min_duration <= duration <= max_duration):
+                continue
+            title = (item.get("title") or "")
+            has_kw = "трейлер" in title.lower() or "trailer" in title.lower()
+            score = 2 if has_kw else 1
+            if best is None or score > best[0]:
+                best = (score, {"id": video_id, "name": title.strip()})
+            if score == 2:
+                break
+
+        return best[1] if best else None
+
+    def _find_rutube_trailer(self, film_id: int) -> Optional[dict]:
+        key = str(int(film_id))
+        with self._rutube_cache_lock:
+            cached = self._rutube_cache.get(key)
+        if cached and isinstance(cached, dict):
+            video_id = (cached.get("video_id") or "").strip()
+            if video_id:
+                return {
+                    "url": f"https://rutube.ru/play/embed/{video_id}",
+                    "name": cached.get("name") or "Трейлер RuTube",
+                    "site": "RUTUBE",
+                }
+            if cached.get("miss_at"):  # недавний промах — не долбим RuTube повторно
+                if time.time() - float(cached["miss_at"]) < 7 * 24 * 3600:
+                    return None
+
+        try:
+            details = self.get_movie_details(int(film_id))
+        except UpstreamServiceError:
+            return None
+
+        query = self._build_rutube_query(details or {})
+        found = self._rutube_search(query) if query else None
+
+        with self._rutube_cache_lock:
+            if found:
+                self._rutube_cache[key] = {
+                    "video_id": found["id"],
+                    "name": found.get("name") or "",
+                    "query": query,
+                }
+            else:
+                self._rutube_cache[key] = {"miss_at": time.time(), "query": query}
+            self._save_rutube_cache_locked()
+
+        if not found:
+            return None
+        return {
+            "url": f"https://rutube.ru/play/embed/{found['id']}",
+            "name": found.get("name") or "Трейлер RuTube",
+            "site": "RUTUBE",
         }
 
     def get_recommendations(

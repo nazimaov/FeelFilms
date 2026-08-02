@@ -2068,21 +2068,23 @@ body.app-booting #main-app {
 
 .search-overlay {
     position: fixed;
-    inset: 0;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 100vh;   /* fallback */
+    height: 100dvh;  /* учитывает клавиатуру/системные бары */
     z-index: 90;
     background: var(--bg-primary);
     display: flex;
     flex-direction: column;
     opacity: 0;
     visibility: hidden;
-    transform: translateY(8px);
-    transition: opacity var(--transition), transform var(--transition), visibility var(--transition);
+    transition: opacity 0.18s ease, visibility 0.18s ease;
 }
 
 .search-overlay.active {
     opacity: 1;
     visibility: visible;
-    transform: translateY(0);
 }
 
 .search-bar {
@@ -2234,21 +2236,23 @@ body.app-booting #main-app {
 
 .ai-overlay {
     position: fixed;
-    inset: 0;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 100vh;   /* fallback */
+    height: 100dvh;  /* учитывает клавиатуру/системные бары */
     z-index: 92;
     background: var(--bg-primary);
     display: flex;
     flex-direction: column;
     opacity: 0;
     visibility: hidden;
-    transform: translateY(8px);
-    transition: opacity var(--transition), transform var(--transition), visibility var(--transition);
+    transition: opacity 0.18s ease, visibility 0.18s ease;
 }
 
 .ai-overlay.active {
     opacity: 1;
     visibility: visible;
-    transform: translateY(0);
 }
 
 .ai-bar {

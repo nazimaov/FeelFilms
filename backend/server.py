@@ -14,9 +14,11 @@ from pydantic import BaseModel, Field
 try:
     from backend.kinopoisk_service import KinopoiskConfig, KinopoiskService, UpstreamServiceError
     from backend.catalog_service import CatalogService
+    from backend.ai_service import build_ai_assistant
 except Exception:
     from kinopoisk_service import KinopoiskConfig, KinopoiskService, UpstreamServiceError
     from catalog_service import CatalogService
+    from ai_service import build_ai_assistant
 
 load_dotenv(encoding="utf-8-sig")
 
@@ -137,6 +139,9 @@ movie_service = KinopoiskService(service_config)
 # живого Kinopoisk — пользователи не тратят лимит API. Иначе — работа по-старому.
 CATALOG_PATH = Path(os.getenv("CATALOG_PATH", str(Path(__file__).parent / "catalog.json")))
 catalog_service = CatalogService(CATALOG_PATH)
+
+# ИИ-ассистент поиска фильмов (провайдер задаётся окружением, по умолчанию Groq).
+ai_assistant = build_ai_assistant()
 
 app = FastAPI(title="FeelFilms API", version="3.0.0")
 
@@ -383,6 +388,112 @@ def post_recommendations(payload: RecommendationsRequest) -> dict:
     except Exception as exc:
         logger.exception("Unexpected server error in /api/recommendations: %s", exc)
         raise HTTPException(status_code=500, detail="Internal server error") from exc
+
+
+# ------------------------------------------------------------------
+# ИИ-ассистент поиска фильмов
+# ------------------------------------------------------------------
+
+def _movie_year(movie: dict):
+    try:
+        return int(str(movie.get("year"))[:4])
+    except (TypeError, ValueError):
+        return None
+
+
+def _resolve_ai_movie(title: str, year) -> Optional[dict]:
+    """Превращает предложенное ИИ название в реальную карточку FeelFilm.
+
+    Сначала ищет в локальном каталоге, затем в Kinopoisk. При наличии года
+    выбирает совпадающий/ближайший вариант.
+    """
+    title = (title or "").strip()
+    if not title:
+        return None
+
+    candidates: list = []
+    if catalog_service.available:
+        try:
+            candidates = catalog_service.search(title, limit=8).get("items", [])
+        except Exception:  # noqa: BLE001
+            candidates = []
+    if not candidates:
+        try:
+            candidates = movie_service.search_movies(title, limit=8).get("items", [])
+        except Exception:  # noqa: BLE001
+            candidates = []
+    if not candidates:
+        return None
+
+    if isinstance(year, int):
+        exact = [m for m in candidates if _movie_year(m) == year]
+        if exact:
+            return exact[0]
+        dated = [(abs(_movie_year(m) - year), m) for m in candidates if _movie_year(m) is not None]
+        if dated:
+            dated.sort(key=lambda pair: pair[0])
+            if dated[0][0] <= 2:  # в пределах пары лет — считаем тем же фильмом
+                return dated[0][1]
+    return candidates[0]
+
+
+class AIMessage(BaseModel):
+    role: str = Field(default="user")
+    content: str = Field(default="")
+
+
+class AIAssistantRequest(BaseModel):
+    messages: list[AIMessage] = Field(default_factory=list)
+
+
+@app.post("/api/ai/assistant")
+def post_ai_assistant(payload: AIAssistantRequest) -> dict:
+    logger.info("POST /api/ai/assistant messages=%d", len(payload.messages))
+    if not ai_assistant.enabled:
+        return {
+            "enabled": False,
+            "reply": "ИИ-ассистент пока не настроен.",
+            "need_more_info": False,
+            "movies": [],
+        }
+
+    history = [{"role": m.role, "content": m.content} for m in payload.messages]
+    try:
+        result = ai_assistant.assist(history)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("AI assistant error: %s", exc)
+        result = None
+
+    if not result:
+        return {
+            "enabled": True,
+            "reply": "Не удалось обработать запрос. Попробуйте описать фильм подробнее.",
+            "need_more_info": False,
+            "movies": [],
+        }
+
+    resolved: list = []
+    seen_ids: set = set()
+    for suggestion in result.get("movies", []):
+        movie = _resolve_ai_movie(suggestion.get("title"), suggestion.get("year"))
+        if not movie:
+            continue
+        mid = movie.get("kinopoiskId") or movie.get("filmId")
+        if mid in seen_ids:
+            continue
+        seen_ids.add(mid)
+        resolved.append(movie)
+
+    reply = result.get("reply", "")
+    if not resolved and not result.get("need_more_info") and not reply:
+        reply = "Ничего похожего не нашёл. Попробуйте вспомнить ещё детали."
+
+    return {
+        "enabled": True,
+        "reply": reply,
+        "need_more_info": result.get("need_more_info", False),
+        "movies": resolved,
+    }
 
 
 if __name__ == "__main__":

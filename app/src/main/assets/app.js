@@ -1109,6 +1109,10 @@ const searchHint = $('search-hint');
 const searchLoader = $('search-loader');
 const searchEmpty = $('search-empty');
 const searchClearBtn = $('btn-search-clear');
+const aiOverlay = $('ai-overlay');
+const aiMessages = $('ai-messages');
+const aiInput = $('ai-input');
+const aiSendBtn = $('btn-ai-send');
 const popupOverlay = $('popup-overlay');
 const popupPoster = $('popup-poster');
 const popupTitle = $('popup-title');
@@ -3965,6 +3969,139 @@ function clearSearchInput() {
 }
 
 // ============================================================
+// ИИ-ассистент поиска фильмов
+// ============================================================
+
+let aiHistory = [];   // [{role:'user'|'assistant', content:str}]
+let aiBusy = false;
+const AI_GREETING = 'Привет! Я помогу найти фильм или сериал по описанию. Расскажите, что помните: сцену, сюжет, героев, диалог — что угодно.';
+
+function scrollAIToBottom() {
+    if (aiMessages) aiMessages.scrollTop = aiMessages.scrollHeight;
+}
+
+function renderAIBubble(role, text) {
+    if (!aiMessages) return null;
+    const div = document.createElement('div');
+    div.className = 'ai-msg ' + (role === 'user' ? 'user' : 'assistant');
+    div.textContent = text;
+    aiMessages.appendChild(div);
+    scrollAIToBottom();
+    return div;
+}
+
+function showAITyping() {
+    if (!aiMessages || $('ai-typing-indicator')) return;
+    const t = document.createElement('div');
+    t.className = 'ai-typing';
+    t.id = 'ai-typing-indicator';
+    t.innerHTML = '<span></span><span></span><span></span>';
+    aiMessages.appendChild(t);
+    scrollAIToBottom();
+}
+
+function hideAITyping() {
+    const t = $('ai-typing-indicator');
+    if (t) t.remove();
+}
+
+function renderAIMovies(movies) {
+    if (!aiMessages) return;
+    const wrap = document.createElement('div');
+    wrap.className = 'ai-movies';
+    movies.forEach((movie) => {
+        const card = document.createElement('div');
+        card.className = 'fav-card';
+        const ratingText = getMovieRatingText(movie);
+        const poster = getCardPosterUrl(movie) || movie.poster || '';
+        card.innerHTML = `
+            <img src="${poster}" alt="${movie.title}" loading="lazy">
+            <div class="fav-info">
+                <div class="fav-title">${movie.title}</div>
+                ${movie.year ? `<div class="fav-genres">${movie.year}</div>` : ''}
+                ${ratingText ? `<div class="fav-rating">⭐ ${ratingText}</div>` : ''}
+            </div>
+        `;
+        card.addEventListener('click', () => openPopup(movie, 'search'));
+        wrap.appendChild(card);
+    });
+    aiMessages.appendChild(wrap);
+    scrollAIToBottom();
+}
+
+function autoGrowAIInput() {
+    if (!aiInput) return;
+    aiInput.style.height = 'auto';
+    aiInput.style.height = Math.min(aiInput.scrollHeight, 120) + 'px';
+}
+
+function openAI() {
+    if (!aiOverlay) return;
+    aiOverlay.classList.add('active');
+    document.body.style.overflow = 'hidden';
+    userMenu.classList.remove('active');
+    if (aiHistory.length === 0 && aiMessages && !aiMessages.children.length) {
+        renderAIBubble('assistant', AI_GREETING);
+    }
+    setTimeout(() => aiInput && aiInput.focus(), 60);
+}
+
+function closeAI() {
+    if (!aiOverlay) return;
+    aiOverlay.classList.remove('active');
+    if (!popupOverlay.classList.contains('active')) {
+        document.body.style.overflow = '';
+    }
+}
+
+async function sendAIMessage() {
+    if (aiBusy || !aiInput) return;
+    const text = (aiInput.value || '').trim();
+    if (!text) return;
+    aiInput.value = '';
+    autoGrowAIInput();
+    renderAIBubble('user', text);
+    aiHistory.push({ role: 'user', content: text });
+    aiBusy = true;
+    if (aiSendBtn) aiSendBtn.disabled = true;
+    showAITyping();
+    try {
+        const response = await fetch(`${BACKEND_API_BASE}/api/ai/assistant`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+            body: JSON.stringify({ messages: aiHistory.slice(-12) })
+        });
+        hideAITyping();
+        if (!response.ok) throw new Error(`ai HTTP ${response.status}`);
+        const data = await response.json();
+        if (data.enabled === false) {
+            renderAIBubble('assistant', data.reply || 'ИИ-ассистент пока недоступен.');
+            return;
+        }
+        const reply = (data.reply || '').trim();
+        if (reply) {
+            renderAIBubble('assistant', reply);
+            aiHistory.push({ role: 'assistant', content: reply });
+        }
+        const movies = Array.isArray(data.movies)
+            ? data.movies.map(normalizeMovie).filter((m) => Number.isFinite(m.id))
+            : [];
+        if (movies.length) renderAIMovies(movies);
+        if (!reply && !movies.length) {
+            renderAIBubble('assistant', 'Не удалось ничего найти. Попробуйте вспомнить ещё детали.');
+        }
+    } catch (err) {
+        hideAITyping();
+        console.warn('AI error:', err);
+        renderAIBubble('assistant', 'Не получилось связаться с ИИ. Проверьте соединение и попробуйте снова.');
+    } finally {
+        aiBusy = false;
+        if (aiSendBtn) aiSendBtn.disabled = false;
+        if (aiInput) aiInput.focus();
+    }
+}
+
+// ============================================================
 // Навигация по табам
 // ============================================================
 
@@ -4580,6 +4717,22 @@ function init() {
                 searchInput.blur();
             } else if (e.key === 'Escape') {
                 closeSearch();
+            }
+        });
+    }
+
+    // --- ИИ-ассистент ---
+    $('btn-ai').addEventListener('click', openAI);
+    if ($('btn-ai-back')) $('btn-ai-back').addEventListener('click', closeAI);
+    if (aiSendBtn) aiSendBtn.addEventListener('click', sendAIMessage);
+    if (aiInput) {
+        aiInput.addEventListener('input', autoGrowAIInput);
+        aiInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendAIMessage();
+            } else if (e.key === 'Escape') {
+                closeAI();
             }
         });
     }

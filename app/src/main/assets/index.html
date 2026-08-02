@@ -144,6 +144,9 @@
 
             <!-- Header -->
             <header class="app-header">
+                <button class="ai-btn" id="btn-ai" aria-label="ИИ-поиск фильмов">
+                    <img src="ai-icon.png" alt="ИИ" width="40" height="40">
+                </button>
                 <div class="logo">
                     <span class="logo-icon">🎬</span>
                     <h1>Feel<span class="accent">Film</span></h1>
@@ -334,6 +337,33 @@
                         <p>Ничего не найдено</p>
                     </div>
                     <div class="favorites-grid search-results" id="search-results"></div>
+                </div>
+            </div>
+
+            <!-- ===== AI ASSISTANT SCREEN ===== -->
+            <div class="ai-overlay" id="ai-overlay">
+                <div class="ai-bar">
+                    <button type="button" class="ai-back-btn" id="btn-ai-back" aria-label="Назад">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4">
+                            <polyline points="15 18 9 12 15 6" />
+                        </svg>
+                    </button>
+                    <div class="ai-bar-title">
+                        <img src="ai-icon.png" alt="" class="ai-bar-icon" width="26" height="26">
+                        <span>ИИ-поиск фильмов</span>
+                    </div>
+                </div>
+                <div class="ai-messages" id="ai-messages"></div>
+                <div class="ai-input-bar">
+                    <textarea id="ai-input" rows="1"
+                        placeholder="Опишите фильм: сцену, сюжет, героев, диалог…"
+                        autocomplete="off" autocapitalize="sentences" enterkeyhint="send"></textarea>
+                    <button type="button" class="ai-send-btn" id="btn-ai-send" aria-label="Отправить">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                            <line x1="22" y1="2" x2="11" y2="13" />
+                            <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                        </svg>
+                    </button>
                 </div>
             </div>
 

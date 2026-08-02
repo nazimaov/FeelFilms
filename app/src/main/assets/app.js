@@ -41,9 +41,18 @@ const firebaseConfig = {
     appId: "1:524135203863:web:10214378248da788ac4852"
 };
 // =====================================================
+const BACKEND_DIRECT_URL = 'http://185.73.126.11:8000';
+// Основной путь — через WebView-прокси (нативная сторона проксирует запросы к
+// бэкенду и добавляет заголовки). Работает для GET, но НЕ передаёт тело POST
+// (ограничение WebResourceRequest в Android), поэтому POST-эндпоинты вызываем
+// напрямую через BACKEND_DIRECT_URL — см. использования ниже.
 const BACKEND_API_BASE = window.location.hostname === 'appassets.androidplatform.net'
     ? 'https://appassets.androidplatform.net/api-proxy'
-    : 'http://185.73.126.11:8000';
+    : BACKEND_DIRECT_URL;
+// Прямой URL для POST-запросов с телом (JSON). В web-режиме совпадает с прокси.
+const BACKEND_POST_BASE = window.location.hostname === 'appassets.androidplatform.net'
+    ? BACKEND_DIRECT_URL
+    : BACKEND_DIRECT_URL;
 
 // Централизованные настройки служебных ссылок и метаданных приложения.
 const APP_RUNTIME_CONFIG = {
@@ -2955,10 +2964,11 @@ async function fetchRecommendationsBatch() {
     }
 
     try {
-        const response = await fetch(`${BACKEND_API_BASE}/api/recommendations`, {
+        // POST с телом — напрямую в бэкенд (WebView-прокси не пересылает body).
+        const response = await fetch(`${BACKEND_POST_BASE}/api/recommendations`, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json',
+                'Content-Type': 'application/json; charset=utf-8',
                 'Accept': 'application/json'
             },
             cache: 'no-store',
@@ -3870,10 +3880,50 @@ function updateSearchClearButton() {
     }
 }
 
+// Прибиваем оверлей к видимой области (visualViewport учитывает клавиатуру).
+// Так экран поиска/чата ведёт себя как нативное окно: не «прыгает» при показе
+// клавиатуры, а сжимается ровно до её верхней границы, поле ввода остаётся видно.
+const overlayViewportBindings = new WeakMap();
+
+function bindOverlayViewport(overlay) {
+    if (!overlay) return;
+    if (overlayViewportBindings.has(overlay)) return;
+    const vv = window.visualViewport;
+    const apply = () => {
+        const h = (vv && vv.height) ? vv.height : window.innerHeight;
+        overlay.style.height = h + 'px';
+        overlay.style.top = ((vv && vv.offsetTop) ? vv.offsetTop : 0) + 'px';
+    };
+    apply();
+    const onResize = () => apply();
+    if (vv) {
+        vv.addEventListener('resize', onResize);
+        vv.addEventListener('scroll', onResize);
+    }
+    window.addEventListener('resize', onResize);
+    overlayViewportBindings.set(overlay, { onResize });
+}
+
+function unbindOverlayViewport(overlay) {
+    if (!overlay) return;
+    const binding = overlayViewportBindings.get(overlay);
+    if (!binding) return;
+    const vv = window.visualViewport;
+    if (vv) {
+        vv.removeEventListener('resize', binding.onResize);
+        vv.removeEventListener('scroll', binding.onResize);
+    }
+    window.removeEventListener('resize', binding.onResize);
+    overlay.style.height = '';
+    overlay.style.top = '';
+    overlayViewportBindings.delete(overlay);
+}
+
 function openSearch() {
     if (!searchOverlay) return;
     searchOverlay.classList.add('active');
     document.body.style.overflow = 'hidden';
+    bindOverlayViewport(searchOverlay);
     userMenu.classList.remove('active');
     updateSearchClearButton();
     if (!searchInput || !searchInput.value.trim()) {
@@ -3885,6 +3935,7 @@ function openSearch() {
 function closeSearch() {
     if (!searchOverlay) return;
     searchOverlay.classList.remove('active');
+    unbindOverlayViewport(searchOverlay);
     if (!popupOverlay.classList.contains('active')) {
         document.body.style.overflow = '';
     }
@@ -4039,6 +4090,7 @@ function openAI() {
     if (!aiOverlay) return;
     aiOverlay.classList.add('active');
     document.body.style.overflow = 'hidden';
+    bindOverlayViewport(aiOverlay);
     userMenu.classList.remove('active');
     if (aiHistory.length === 0 && aiMessages && !aiMessages.children.length) {
         renderAIBubble('assistant', AI_GREETING);
@@ -4049,6 +4101,7 @@ function openAI() {
 function closeAI() {
     if (!aiOverlay) return;
     aiOverlay.classList.remove('active');
+    unbindOverlayViewport(aiOverlay);
     if (!popupOverlay.classList.contains('active')) {
         document.body.style.overflow = '';
     }
@@ -4066,9 +4119,10 @@ async function sendAIMessage() {
     if (aiSendBtn) aiSendBtn.disabled = true;
     showAITyping();
     try {
-        const response = await fetch(`${BACKEND_API_BASE}/api/ai/assistant`, {
+        // POST с телом — напрямую в бэкенд, минуя WebView-прокси (он не пересылает body).
+        const response = await fetch(`${BACKEND_POST_BASE}/api/ai/assistant`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+            headers: { 'Content-Type': 'application/json; charset=utf-8', Accept: 'application/json' },
             body: JSON.stringify({ messages: aiHistory.slice(-12) })
         });
         hideAITyping();

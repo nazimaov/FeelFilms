@@ -1,6 +1,13 @@
 {
   "meta": {
-    "counter": 6
+    "counter": 7
   },
-  "posts": {}
+  "posts": {
+    "kinopoisk:13250428": {
+      "posted_at": 1785771799,
+      "title": "Миральес",
+      "post_id": 22,
+      "type": "premiere"
+    }
+  }
 }

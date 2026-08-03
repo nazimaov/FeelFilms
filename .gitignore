@@ -12,6 +12,7 @@ android-signing/*.jks
 # VK bot runtime data
 vk_bot/.env
 vk_bot/data/*.json
+!vk_bot/data/posted.json
 vk_bot/data/*.log
 vk_bot/data/*.tmp
 vk_bot/data/*.log.*

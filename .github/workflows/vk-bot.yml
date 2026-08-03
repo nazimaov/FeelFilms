@@ -1,0 +1,106 @@
+name: VK bot autoposting
+
+on:
+  schedule:
+    # Базовые слоты в UTC: 06:17, 11:17, 15:17, 20:17
+    # (= МСК 09:17, 14:17, 18:17, 23:17). Промежутки между слотами 5/4/5/10 ч.
+    # Внутри job'а перед публикацией — случайная задержка 0..45 мин,
+    # чтобы посты каждый день выходили в РАЗНОЕ время.
+    # Гарантированный минимум между постами: 4h − 45m = 3h15m (>= 3 ч).
+    # Cron GitHub Actions неточен под нагрузкой (может опоздать на 5–20 мин) —
+    # это только усиливает разброс, слоты всё равно не пересекаются.
+    - cron: '17 6,11,15,20 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry-run (не публиковать, только показать текст)'
+        type: boolean
+        default: false
+
+concurrency:
+  group: vk-bot-publish
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      # Секреты — задать в Settings -> Secrets and variables -> Actions.
+      VK_TOKEN: ${{ secrets.VK_TOKEN }}
+      KINOPOISK_API_KEY: ${{ secrets.KINOPOISK_API_KEY }}
+      AI_API_KEY: ${{ secrets.AI_API_KEY }}
+      # Публичные настройки — как в vk_bot/.env.
+      VK_GROUP_ID: '240500705'
+      VK_API_VERSION: '5.199'
+      KINOPOISK_API_BASE: 'https://kinopoiskapiunofficial.tech'
+      AI_PROVIDER: 'openai'
+      AI_BASE_URL: 'https://api.groq.com/openai/v1'
+      AI_MODEL: 'llama-3.3-70b-versatile'
+      AI_TEMPERATURE: '0.8'
+      CONTENT_TYPES: 'premiere,recommendation,fact'
+      HASHTAGS: '#FeelFilm #кино #чтопосмотреть'
+      MIN_RATING: '0'
+      ATTACH_TRAILER_LINK: 'true'
+      LOG_LEVEL: 'INFO'
+      REQUEST_TIMEOUT_SECONDS: '20'
+      # Расписание бота внутри workflow не используется (кроном рулит GH Actions),
+      # но пусть будет — на случай локального запуска.
+      SCHEDULE_MODE: 'times'
+      POST_TIMES: '10:00,13:00,16:00,20:00'
+      TIMEZONE: 'Europe/Moscow'
+      POST_ON_START: 'false'
+
+    steps:
+      - name: Checkout feat/vk-bot-group
+        uses: actions/checkout@v4
+        with:
+          ref: feat/vk-bot-group
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: vk_bot/requirements.txt
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && pip install -r vk_bot/requirements.txt
+
+      - name: Sanity check config
+        run: python -m vk_bot.main --check
+
+      - name: Random jitter before publish
+        # Только для запусков по расписанию: спим 0..45 мин случайно.
+        # Ручной workflow_dispatch публикует сразу, без ожидания.
+        if: github.event_name == 'schedule'
+        run: |
+          DELAY=$(( RANDOM % 2701 ))  # 0..2700 секунд (0..45 мин)
+          echo "Sleeping $DELAY seconds ($((DELAY/60)) min) to randomize post time…"
+          sleep "$DELAY"
+
+      - name: Publish one post
+        run: |
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            python -m vk_bot.main --once --dry-run
+          else
+            python -m vk_bot.main --once
+          fi
+
+      - name: Commit updated posted.json
+        if: github.event.inputs.dry_run != 'true'
+        run: |
+          git config user.name  "feelfilm-vkbot[bot]"
+          git config user.email "feelfilm-vkbot@users.noreply.github.com"
+          git add vk_bot/data/posted.json
+          if git diff --cached --quiet; then
+            echo "posted.json без изменений — коммит не нужен."
+          else
+            git commit -m "chore(vk-bot): update posted.json [skip ci]"
+            git push origin HEAD:feat/vk-bot-group
+          fi

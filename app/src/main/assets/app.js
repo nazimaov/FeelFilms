@@ -41,9 +41,18 @@ const firebaseConfig = {
     appId: "1:524135203863:web:10214378248da788ac4852"
 };
 // =====================================================
+const BACKEND_DIRECT_URL = 'http://185.73.126.11:8000';
+// Основной путь — через WebView-прокси (нативная сторона проксирует запросы к
+// бэкенду и добавляет заголовки). Работает для GET, но НЕ передаёт тело POST
+// (ограничение WebResourceRequest в Android), поэтому POST-эндпоинты вызываем
+// напрямую через BACKEND_DIRECT_URL — см. использования ниже.
 const BACKEND_API_BASE = window.location.hostname === 'appassets.androidplatform.net'
     ? 'https://appassets.androidplatform.net/api-proxy'
-    : 'http://185.73.126.11:8000';
+    : BACKEND_DIRECT_URL;
+// Прямой URL для POST-запросов с телом (JSON). В web-режиме совпадает с прокси.
+const BACKEND_POST_BASE = window.location.hostname === 'appassets.androidplatform.net'
+    ? BACKEND_DIRECT_URL
+    : BACKEND_DIRECT_URL;
 
 // Централизованные настройки служебных ссылок и метаданных приложения.
 const APP_RUNTIME_CONFIG = {
@@ -325,7 +334,12 @@ const state = {
     watchedDetailsById: new Map(),
     watchedVisibleCount: 12,
     watchedDetailsInFlight: new Set(),
-    skippedIds: new Set(), // Отклоненные фильмы
+    skippedIds: new Set(), // Отклоненные фильмы («Пропущенные»)
+    skippedMovies: [],
+    skippedOrderIds: [],
+    skippedDetailsById: new Map(),
+    skippedVisibleCount: 12,
+    skippedDetailsInFlight: new Set(),
     seenMovieIds: new Set(), // Просмотренные (не показывать повторно)
     allCategories: CATEGORY_DEFINITIONS,
     selectedCategoryIds: new Set(),
@@ -497,6 +511,16 @@ function saveDiscoverFeedCache() {
     }
 }
 
+function clearDiscoverFeedCache() {
+    const key = getDiscoverFeedCacheKey();
+    if (!key) return;
+    try {
+        localStorage.removeItem(key);
+    } catch (err) {
+        console.warn('Не удалось очистить кеш ленты:', err);
+    }
+}
+
 function restoreDiscoverFeedFromCache() {
     const cached = loadDiscoverFeedCache();
     if (!cached) return false;
@@ -587,6 +611,12 @@ function syncWatchedArray() {
         .filter(Boolean);
 }
 
+function syncSkippedArray() {
+    state.skippedMovies = state.skippedOrderIds
+        .map((id) => state.skippedDetailsById.get(id))
+        .filter(Boolean);
+}
+
 function applyFavoritesIds(ids) {
     state.favoriteOrderIds = [...ids];
     state.favoriteIds = new Set(ids);
@@ -635,6 +665,22 @@ function applyWatchedDetails(detailsMapLike) {
     syncWatchedArray();
 }
 
+function applySkippedIds(ids) {
+    state.skippedOrderIds = [...ids];
+    state.skippedIds = new Set(ids);
+    syncSkippedArray();
+}
+
+function applySkippedDetails(detailsMapLike) {
+    state.skippedDetailsById = new Map();
+    Object.entries(detailsMapLike || {}).forEach(([rawId, movie]) => {
+        const id = Number(rawId);
+        if (!Number.isFinite(id) || !movie) return;
+        state.skippedDetailsById.set(id, movie);
+    });
+    syncSkippedArray();
+}
+
 function upsertFavoriteDetail(movie) {
     if (!movie || !Number.isFinite(movie.id)) return;
     state.favoriteDetailsById.set(movie.id, movie);
@@ -653,6 +699,12 @@ function upsertWatchedDetail(movie) {
     syncWatchedArray();
 }
 
+function upsertSkippedDetail(movie) {
+    if (!movie || !Number.isFinite(movie.id)) return;
+    state.skippedDetailsById.set(movie.id, movie);
+    syncSkippedArray();
+}
+
 function isMovieProcessed(movieId) {
     return state.favoriteIds.has(movieId)
         || state.likedIds.has(movieId)
@@ -665,6 +717,7 @@ function applyFavoritesState() {
     syncFavoritesArray();
     syncLikedArray();
     syncWatchedArray();
+    syncSkippedArray();
     computePreferences();
     updateFavBadge();
     renderFavorites();
@@ -917,18 +970,25 @@ function saveWatchedCache() {
 
 function loadSkippedCache() {
     const key = getSkippedCacheKey();
-    if (!key) return new Set();
+    if (!key) return { ids: [], details: {} };
     try {
         const raw = localStorage.getItem(key);
-        if (!raw) return new Set();
+        if (!raw) return { ids: [], details: {} };
         const parsed = JSON.parse(raw);
-        const ids = Array.isArray(parsed)
-            ? parsed.map((id) => Number(id)).filter((id) => Number.isFinite(id))
+        // Обратная совместимость: старый формат — просто массив ID без деталей.
+        if (Array.isArray(parsed)) {
+            const ids = parsed.map((id) => Number(id)).filter((id) => Number.isFinite(id));
+            return { ids, details: {} };
+        }
+        if (!parsed || typeof parsed !== 'object') return { ids: [], details: {} };
+        const ids = Array.isArray(parsed.ids)
+            ? parsed.ids.map((id) => Number(id)).filter((id) => Number.isFinite(id))
             : [];
-        return new Set(ids);
+        const details = parsed.details && typeof parsed.details === 'object' ? parsed.details : {};
+        return { ids, details };
     } catch (err) {
         console.warn('Не удалось прочитать кеш skipped:', err);
-        return new Set();
+        return { ids: [], details: {} };
     }
 }
 
@@ -936,7 +996,14 @@ function saveSkippedCache() {
     const key = getSkippedCacheKey();
     if (!key) return;
     try {
-        localStorage.setItem(key, JSON.stringify([...state.skippedIds]));
+        const details = {};
+        state.skippedDetailsById.forEach((movie, id) => {
+            details[id] = movie;
+        });
+        localStorage.setItem(key, JSON.stringify({
+            ids: state.skippedOrderIds,
+            details
+        }));
     } catch (err) {
         console.warn('Не удалось сохранить кеш skipped:', err);
     }
@@ -1037,11 +1104,24 @@ const favBadge = $('fav-badge');
 const watchlistGrid = $('watchlist-grid');
 const likedGrid = $('liked-grid');
 const watchedGrid = $('watched-grid');
+const skippedGrid = $('skipped-grid');
 const watchlistSection = $('watchlist-section');
 const likedSection = $('liked-section');
 const watchedSection = $('watched-section');
+const skippedSection = $('skipped-section');
 const favLoader = $('fav-loader');
 const emptyFavs = $('empty-favorites');
+const searchOverlay = $('search-overlay');
+const searchInput = $('search-input');
+const searchResults = $('search-results');
+const searchHint = $('search-hint');
+const searchLoader = $('search-loader');
+const searchEmpty = $('search-empty');
+const searchClearBtn = $('btn-search-clear');
+const aiOverlay = $('ai-overlay');
+const aiMessages = $('ai-messages');
+const aiInput = $('ai-input');
+const aiSendBtn = $('btn-ai-send');
 const popupOverlay = $('popup-overlay');
 const popupPoster = $('popup-poster');
 const popupTitle = $('popup-title');
@@ -1049,6 +1129,7 @@ const popupYear = $('popup-year');
 const popupRating = $('popup-rating');
 const popupCountry = $('popup-country');
 const popupGenre = $('popup-genre');
+const popupDuration = $('popup-duration');
 const popupDesc = $('popup-description');
 const popupToggleWatchlist = $('popup-toggle-watchlist');
 const popupToggleWatchlistText = $('popup-toggle-watchlist-text');
@@ -1218,11 +1299,12 @@ function showMainApp(user, forceReload = false) {
     const watchlistCache = loadFavoritesCache();
     const likedCache = loadLikedCache();
     const watchedCache = loadWatchedCache();
+    const skippedCache = loadSkippedCache();
     const resolvedStatuses = resolveStatusConflicts({
         watchlistIds: watchlistCache.ids,
         likedIds: likedCache.ids,
         watchedIds: watchedCache.ids,
-        skippedIds: [...loadSkippedCache()]
+        skippedIds: skippedCache.ids
     });
     applyFavoritesIds(resolvedStatuses.watchlistIds);
     applyFavoriteDetails(watchlistCache.details);
@@ -1233,7 +1315,9 @@ function showMainApp(user, forceReload = false) {
     applyWatchedIds(resolvedStatuses.watchedIds);
     applyWatchedDetails(watchedCache.details);
     state.watchedVisibleCount = FAVORITES_PAGE_SIZE;
-    state.skippedIds = new Set(resolvedStatuses.skippedIds);
+    applySkippedIds(resolvedStatuses.skippedIds);
+    applySkippedDetails(skippedCache.details);
+    state.skippedVisibleCount = FAVORITES_PAGE_SIZE;
     applyFavoritesState();
 
     const shouldLoadDiscover = forceReload || state.movies.length === 0;
@@ -1301,6 +1385,11 @@ function showAuthScreen() {
     state.watchedDetailsInFlight.clear();
     state.watchedVisibleCount = FAVORITES_PAGE_SIZE;
     state.skippedIds.clear();
+    state.skippedMovies = [];
+    state.skippedOrderIds = [];
+    state.skippedDetailsById.clear();
+    state.skippedDetailsInFlight.clear();
+    state.skippedVisibleCount = FAVORITES_PAGE_SIZE;
     state.preferences = {
         categoryWeights: {},
         typeWeights: {},
@@ -1323,6 +1412,7 @@ function showAuthScreen() {
     if (watchlistGrid) watchlistGrid.innerHTML = '';
     if (likedGrid) likedGrid.innerHTML = '';
     if (watchedGrid) watchedGrid.innerHTML = '';
+    if (skippedGrid) skippedGrid.innerHTML = '';
     renderCategoryFilters();
     updateFavBadge();
 }
@@ -1429,6 +1519,17 @@ async function ensureWatchedDetailsForVisible() {
     );
 }
 
+async function ensureSkippedDetailsForVisible() {
+    const visibleIds = state.skippedOrderIds.slice(0, state.skippedVisibleCount);
+    await ensureDetailsForVisible(
+        visibleIds,
+        state.skippedDetailsById,
+        state.skippedDetailsInFlight,
+        upsertSkippedDetail,
+        saveSkippedCache
+    );
+}
+
 function renderListSkeleton(grid, count = FAVORITES_PAGE_SIZE) {
     if (!grid) return;
     grid.innerHTML = '';
@@ -1451,9 +1552,13 @@ function renderFavoritesSkeleton(count = 4) {
     if (watchlistSection) watchlistSection.style.display = '';
     if (likedSection) likedSection.style.display = '';
     if (watchedSection) watchedSection.style.display = '';
+    if (skippedSection) skippedSection.style.display = state.skippedOrderIds.length > 0 ? '' : 'none';
     renderListSkeleton(watchlistGrid, count);
     renderListSkeleton(likedGrid, count);
     renderListSkeleton(watchedGrid, count);
+    if (state.skippedOrderIds.length > 0) {
+        renderListSkeleton(skippedGrid, count);
+    }
 }
 
 function removeFromWatchlistLocal(movieId) {
@@ -1484,7 +1589,10 @@ function removeFromWatchedLocal(movieId) {
 function removeFromSkippedLocal(movieId) {
     if (!Number.isFinite(movieId)) return;
     state.skippedIds.delete(movieId);
+    state.skippedOrderIds = state.skippedOrderIds.filter((id) => id !== movieId);
+    state.skippedDetailsById.delete(movieId);
     state.interactions.dislikedMovieIds.delete(movieId);
+    syncSkippedArray();
 }
 
 function removeMovieFromAllLocalStatuses(movieId) {
@@ -1526,6 +1634,9 @@ function addToWatchedLocal(movie) {
 function addToSkippedLocal(movie) {
     if (!movie || !Number.isFinite(movie.id)) return;
     state.skippedIds.add(movie.id);
+    state.skippedOrderIds = [movie.id, ...state.skippedOrderIds.filter((id) => id !== movie.id)];
+    upsertSkippedDetail(movie);
+    state.skippedVisibleCount = Math.max(state.skippedVisibleCount, FAVORITES_PAGE_SIZE);
     markMovieDisliked(movie.id);
 }
 
@@ -1553,7 +1664,7 @@ function getCurrentStatusSnapshot() {
         watchlistIds: [...state.favoriteOrderIds],
         likedIds: [...state.likedOrderIds],
         watchedIds: [...state.watchedOrderIds],
-        skippedIds: [...state.skippedIds]
+        skippedIds: [...state.skippedOrderIds]
     });
 }
 
@@ -1562,7 +1673,7 @@ function applyCloudStatusesToLocalState(statuses) {
     applyFavoritesIds(resolved.watchlistIds);
     applyLikedIds(resolved.likedIds);
     applyWatchedIds(resolved.watchedIds);
-    state.skippedIds = new Set(resolved.skippedIds);
+    applySkippedIds(resolved.skippedIds);
 
     const watchlistPruned = new Map();
     resolved.watchlistIds.forEach((id) => {
@@ -1587,6 +1698,14 @@ function applyCloudStatusesToLocalState(statuses) {
     });
     state.watchedDetailsById = watchedPruned;
     syncWatchedArray();
+
+    const skippedPruned = new Map();
+    resolved.skippedIds.forEach((id) => {
+        const movie = state.skippedDetailsById.get(id);
+        if (movie) skippedPruned.set(id, movie);
+    });
+    state.skippedDetailsById = skippedPruned;
+    syncSkippedArray();
 }
 
 async function pushStatusesSnapshotToCloud(statuses) {
@@ -1742,11 +1861,12 @@ async function loadFavoritesFromFirestore() {
     const watchlistCache = loadFavoritesCache();
     const likedCache = loadLikedCache();
     const watchedCache = loadWatchedCache();
+    const skippedCache = loadSkippedCache();
     const resolvedCacheStatuses = resolveStatusConflicts({
         watchlistIds: watchlistCache.ids,
         likedIds: likedCache.ids,
         watchedIds: watchedCache.ids,
-        skippedIds: [...loadSkippedCache()]
+        skippedIds: skippedCache.ids
     });
     applyFavoritesIds(resolvedCacheStatuses.watchlistIds);
     applyFavoriteDetails(watchlistCache.details);
@@ -1757,7 +1877,9 @@ async function loadFavoritesFromFirestore() {
     applyWatchedIds(resolvedCacheStatuses.watchedIds);
     applyWatchedDetails(watchedCache.details);
     state.watchedVisibleCount = FAVORITES_PAGE_SIZE;
-    state.skippedIds = new Set(resolvedCacheStatuses.skippedIds);
+    applySkippedIds(resolvedCacheStatuses.skippedIds);
+    applySkippedDetails(skippedCache.details);
+    state.skippedVisibleCount = FAVORITES_PAGE_SIZE;
     favLoader.style.display = 'none';
 
     const hasLocalStatuses = state.favoriteOrderIds.length > 0 || state.likedOrderIds.length > 0 || state.watchedOrderIds.length > 0;
@@ -1903,6 +2025,26 @@ function setPopupMetaChip(node, value) {
     node.style.display = safe ? '' : 'none';
 }
 
+// Продолжительность фильма. Kinopoisk отдаёт её либо числом минут (каталог),
+// либо строкой «Ч:ММ» (поиск по ключевому слову) — поддерживаем оба формата.
+function formatMovieDuration(value) {
+    if (value === null || value === undefined || value === '') return '';
+    if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+        return `${Math.round(value)} мин`;
+    }
+    const raw = value.toString().trim();
+    const asNumber = Number(raw);
+    if (Number.isFinite(asNumber) && asNumber > 0) {
+        return `${Math.round(asNumber)} мин`;
+    }
+    const hm = raw.match(/^(\d{1,2}):(\d{2})$/);
+    if (hm) {
+        const minutes = parseInt(hm[1], 10) * 60 + parseInt(hm[2], 10);
+        if (minutes > 0) return `${minutes} мин`;
+    }
+    return '';
+}
+
 function inferContentType(rawType, genres) {
     const type = (rawType || '').toString().toUpperCase();
     const joinedGenres = genres.join(' ').toLowerCase();
@@ -1960,6 +2102,7 @@ function normalizeMovie(film) {
         ratingLabel,
         rating: ratingKinopoisk ?? ratingImdb,
         year: film.year || '',
+        filmLength: film.filmLength ?? film.filmLengthMinutes ?? null,
         description: film.description || film.shortDescription || '\u041e\u043f\u0438\u0441\u0430\u043d\u0438\u0435 \u043e\u0442\u0441\u0443\u0442\u0441\u0442\u0432\u0443\u0435\u0442',
         genres,
         genresText: genres.join(', '),
@@ -2529,22 +2672,6 @@ async function fetchMovieTrailers(filmId) {
     }
 }
 
-function extractYouTubeId(rawUrl) {
-    const url = (rawUrl || '').toString().trim();
-    if (!url) return '';
-    const patterns = [
-        /(?:youtube\.com\/embed\/)([A-Za-z0-9_-]{6,})/i,
-        /(?:youtube\.com\/watch\?[^#]*\bv=)([A-Za-z0-9_-]{6,})/i,
-        /(?:youtu\.be\/)([A-Za-z0-9_-]{6,})/i,
-        /(?:youtube\.com\/shorts\/)([A-Za-z0-9_-]{6,})/i
-    ];
-    for (const pattern of patterns) {
-        const match = url.match(pattern);
-        if (match && match[1]) return match[1];
-    }
-    return '';
-}
-
 function pickPreferredTrailer(trailers) {
     if (!Array.isArray(trailers) || trailers.length === 0) return null;
     return trailers.find((item) => buildEmbedUrl(item)) || null;
@@ -2566,9 +2693,16 @@ function openExternalTrailerUrl(url) {
 function buildEmbedUrl(trailer) {
     const rawUrl = (trailer?.url || '').toString().trim();
     if (!rawUrl) return '';
-    const youtubeId = extractYouTubeId(rawUrl);
-    if (youtubeId) {
-        return `https://www.youtube-nocookie.com/embed/${encodeURIComponent(youtubeId)}?autoplay=1&playsinline=1&rel=0&modestbranding=1`;
+    // YouTube убран (в РФ недоступен) — трейлеры проигрываем из виджета
+    // Kinopoisk или из RuTube (встраиваемый плеер, работает в России).
+    if (/rutube\.ru\/play\/embed\//i.test(rawUrl)) {
+        try {
+            const url = new URL(rawUrl);
+            url.searchParams.set('autoplay', '1');
+            return url.toString();
+        } catch {
+            return rawUrl;
+        }
     }
     // Kinopoisk own widget: https://widgets.kinopoisk.ru/discovery/trailer/{id}?...
     // Iframe-embeddable, gives Russian dub. Some CDN URLs (trailers.s3.mds.yandex.net)
@@ -2830,10 +2964,11 @@ async function fetchRecommendationsBatch() {
     }
 
     try {
-        const response = await fetch(`${BACKEND_API_BASE}/api/recommendations`, {
+        // POST с телом — напрямую в бэкенд (WebView-прокси не пересылает body).
+        const response = await fetch(`${BACKEND_POST_BASE}/api/recommendations`, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json',
+                'Content-Type': 'application/json; charset=utf-8',
                 'Accept': 'application/json'
             },
             cache: 'no-store',
@@ -3421,15 +3556,18 @@ function renderFavorites() {
     const hasWatchlist = state.favoriteOrderIds.length > 0;
     const hasLiked = state.likedOrderIds.length > 0;
     const hasWatched = state.watchedOrderIds.length > 0;
+    const hasSkipped = state.skippedOrderIds.length > 0;
 
     if (watchlistSection) watchlistSection.style.display = hasWatchlist ? '' : 'none';
     if (likedSection) likedSection.style.display = hasLiked ? '' : 'none';
     if (watchedSection) watchedSection.style.display = hasWatched ? '' : 'none';
+    if (skippedSection) skippedSection.style.display = hasSkipped ? '' : 'none';
 
-    if (!hasWatchlist && !hasLiked && !hasWatched) {
+    if (!hasWatchlist && !hasLiked && !hasWatched && !hasSkipped) {
         if (watchlistGrid) watchlistGrid.innerHTML = '';
         if (likedGrid) likedGrid.innerHTML = '';
         if (watchedGrid) watchedGrid.innerHTML = '';
+        if (skippedGrid) skippedGrid.innerHTML = '';
         emptyFavs.style.display = '';
         emptyFavs.classList.remove('hidden');
         return;
@@ -3474,9 +3612,22 @@ function renderFavorites() {
         }
     );
 
+    renderStatusSection(
+        skippedGrid,
+        state.skippedOrderIds,
+        state.skippedDetailsById,
+        'skipped',
+        state.skippedVisibleCount,
+        () => {
+            state.skippedVisibleCount += FAVORITES_PAGE_SIZE;
+            renderFavorites();
+        }
+    );
+
     ensureFavoriteDetailsForVisible();
     ensureLikedDetailsForVisible();
     ensureWatchedDetailsForVisible();
+    ensureSkippedDetailsForVisible();
 }
 
 // ============================================================
@@ -3540,6 +3691,17 @@ function getPopupStatusActionMeta(sourceStatus) {
             watched: null
         };
     }
+    if (sourceStatus === 'search') {
+        // Из поиска — добавление в «Хочу посмотреть» (по ТЗ).
+        return {
+            watchlist: {
+                targetStatus: 'watchlist',
+                label: 'Хочу посмотреть',
+                cssClass: 'is-watchlist'
+            },
+            watched: null
+        };
+    }
     return {
         watchlist: null,
         watched: null
@@ -3565,9 +3727,19 @@ function applyPopupStatusButton(button, textNode, meta) {
 }
 
 function applyPopupActionButtons(sourceStatus) {
+    const isSkipped = sourceStatus === 'skipped';
+    const isSearch = sourceStatus === 'search';
+
+    const popupRestoreButton = $('popup-restore');
+    if (popupRestoreButton) {
+        popupRestoreButton.style.display = isSkipped ? '' : 'none';
+    }
+
     const popupDeleteButton = $('popup-delete');
     if (popupDeleteButton) {
-        popupDeleteButton.style.display = sourceStatus ? '' : 'none';
+        // «Удалить из избранного» — только для сохранённых списков.
+        // Для «Пропущенных» вместо этого «Вернуть в подборку», для поиска — ничего.
+        popupDeleteButton.style.display = (sourceStatus && !isSkipped && !isSearch) ? '' : 'none';
     }
 
     const meta = getPopupStatusActionMeta(sourceStatus);
@@ -3587,6 +3759,7 @@ async function openPopup(movie, sourceStatus = null) {
     setPopupMetaChip(popupRating, getMovieRatingText(movie));
     setPopupMetaChip(popupCountry, formatCountryWithFlag(movie));
     setPopupMetaChip(popupGenre, getMovieMetaText(movie));
+    setPopupMetaChip(popupDuration, formatMovieDuration(movie.filmLength));
     popupDesc.textContent = pickBestDescription(null, movie);
     applyPopupActionButtons(sourceStatus);
 
@@ -3629,9 +3802,11 @@ async function openPopup(movie, sourceStatus = null) {
             movie.ratingAgeLimits = details.ratingAgeLimits || movie.ratingAgeLimits;
             movie.poster = details.poster || movie.poster;
             movie.posterFull = details.posterFull || movie.posterFull;
+            movie.filmLength = details.filmLength ?? movie.filmLength;
             popupPoster.style.backgroundImage = `url('${movie.posterFull || movie.poster}')`;
             setPopupMetaChip(popupCountry, formatCountryWithFlag(movie));
             setPopupMetaChip(popupGenre, getMovieMetaText(movie));
+            setPopupMetaChip(popupDuration, formatMovieDuration(movie.filmLength));
 
             // Поля доступности и обновление кнопки «Смотреть».
             movie.productionStatus = details.productionStatus || movie.productionStatus;
@@ -3668,6 +3843,316 @@ function handlePopupStatusActionClick(button) {
     setMovieStatus(currentPopupContext.movie, targetStatus);
     currentPopupContext.status = targetStatus;
     applyPopupActionButtons(currentPopupContext.status);
+}
+
+/**
+ * Вернуть пропущенный фильм обратно в общую подборку:
+ * убираем его из «Пропущенных» и снимаем пометку «показан»,
+ * чтобы он снова мог попасть в ленту и рекомендации.
+ */
+function restoreSkippedMovie(movie) {
+    if (!movie || !Number.isFinite(movie.id)) return;
+    removeFromStatusList(movie.id, 'skipped');
+    state.seenMovieIds.delete(movie.id);
+    saveSeenMoviesCache();
+    closePopup();
+}
+
+// ============================================================
+// Поиск фильмов
+// ============================================================
+
+let searchDebounceTimer = null;
+let searchRequestId = 0;
+const SEARCH_MIN_CHARS = 2;
+const SEARCH_DEBOUNCE_MS = 350;
+
+function setSearchState({ hint = false, loader = false, empty = false, results = false }) {
+    if (searchHint) searchHint.style.display = hint ? '' : 'none';
+    if (searchLoader) searchLoader.style.display = loader ? '' : 'none';
+    if (searchEmpty) searchEmpty.style.display = empty ? '' : 'none';
+    if (searchResults) searchResults.style.display = results ? '' : 'none';
+}
+
+function updateSearchClearButton() {
+    if (searchClearBtn) {
+        searchClearBtn.style.display = (searchInput && searchInput.value.trim()) ? '' : 'none';
+    }
+}
+
+// Прибиваем оверлей к видимой области (visualViewport учитывает клавиатуру).
+// Так экран поиска/чата ведёт себя как нативное окно: не «прыгает» при показе
+// клавиатуры, а сжимается ровно до её верхней границы, поле ввода остаётся видно.
+const overlayViewportBindings = new WeakMap();
+
+function bindOverlayViewport(overlay) {
+    if (!overlay) return;
+    if (overlayViewportBindings.has(overlay)) return;
+    const vv = window.visualViewport;
+    const apply = () => {
+        const h = (vv && vv.height) ? vv.height : window.innerHeight;
+        overlay.style.height = h + 'px';
+        overlay.style.top = ((vv && vv.offsetTop) ? vv.offsetTop : 0) + 'px';
+    };
+    apply();
+    const onResize = () => apply();
+    if (vv) {
+        vv.addEventListener('resize', onResize);
+        vv.addEventListener('scroll', onResize);
+    }
+    window.addEventListener('resize', onResize);
+    overlayViewportBindings.set(overlay, { onResize });
+}
+
+function unbindOverlayViewport(overlay) {
+    if (!overlay) return;
+    const binding = overlayViewportBindings.get(overlay);
+    if (!binding) return;
+    const vv = window.visualViewport;
+    if (vv) {
+        vv.removeEventListener('resize', binding.onResize);
+        vv.removeEventListener('scroll', binding.onResize);
+    }
+    window.removeEventListener('resize', binding.onResize);
+    overlay.style.height = '';
+    overlay.style.top = '';
+    overlayViewportBindings.delete(overlay);
+}
+
+function openSearch() {
+    if (!searchOverlay) return;
+    searchOverlay.classList.add('active');
+    document.body.style.overflow = 'hidden';
+    bindOverlayViewport(searchOverlay);
+    userMenu.classList.remove('active');
+    updateSearchClearButton();
+    if (!searchInput || !searchInput.value.trim()) {
+        setSearchState({ hint: true });
+    }
+    if (searchInput) setTimeout(() => searchInput.focus(), 60);
+}
+
+function closeSearch() {
+    if (!searchOverlay) return;
+    searchOverlay.classList.remove('active');
+    unbindOverlayViewport(searchOverlay);
+    if (!popupOverlay.classList.contains('active')) {
+        document.body.style.overflow = '';
+    }
+}
+
+function renderSearchResults(movies) {
+    if (!searchResults) return;
+    searchResults.innerHTML = '';
+    movies.forEach((movie, i) => {
+        const card = document.createElement('div');
+        card.className = 'fav-card';
+        card.style.animationDelay = `${Math.min(i, 12) * 0.04}s`;
+        const ratingText = getMovieRatingText(movie);
+        const poster = getCardPosterUrl(movie) || movie.poster || '';
+        card.innerHTML = `
+            <img src="${poster}" alt="${movie.title}" loading="lazy">
+            <div class="fav-info">
+                <div class="fav-title">${movie.title}</div>
+                ${movie.year ? `<div class="fav-genres">${movie.year}</div>` : ''}
+                ${ratingText ? `<div class="fav-rating">⭐ ${ratingText}</div>` : ''}
+            </div>
+        `;
+        card.addEventListener('click', () => openPopup(movie, 'search'));
+        searchResults.appendChild(card);
+    });
+    setSearchState({ results: true });
+}
+
+async function runSearch(rawQuery) {
+    const query = (rawQuery || '').trim();
+    if (query.length < SEARCH_MIN_CHARS) {
+        if (searchResults) searchResults.innerHTML = '';
+        setSearchState({ hint: true });
+        return;
+    }
+    const requestId = ++searchRequestId;
+    setSearchState({ loader: true });
+    try {
+        const url = `${BACKEND_API_BASE}/api/search?query=${encodeURIComponent(query)}&limit=30`;
+        const response = await fetch(url, { headers: { Accept: 'application/json' }, cache: 'no-store' });
+        if (requestId !== searchRequestId) return; // пришёл более свежий запрос
+        if (!response.ok) throw new Error(`search HTTP ${response.status}`);
+        const data = await response.json();
+        const items = Array.isArray(data?.items) ? data.items : [];
+        const movies = items.map(normalizeMovie).filter((m) => Number.isFinite(m.id));
+        if (requestId !== searchRequestId) return;
+        if (movies.length === 0) {
+            if (searchResults) searchResults.innerHTML = '';
+            setSearchState({ empty: true });
+        } else {
+            renderSearchResults(movies);
+        }
+    } catch (err) {
+        if (requestId !== searchRequestId) return;
+        console.warn('Ошибка поиска:', err);
+        if (searchResults) searchResults.innerHTML = '';
+        setSearchState({ empty: true });
+    }
+}
+
+function handleSearchInput() {
+    updateSearchClearButton();
+    const value = searchInput ? searchInput.value : '';
+    if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+    if (value.trim().length < SEARCH_MIN_CHARS) {
+        if (searchResults) searchResults.innerHTML = '';
+        setSearchState({ hint: true });
+        return;
+    }
+    searchDebounceTimer = setTimeout(() => runSearch(value), SEARCH_DEBOUNCE_MS);
+}
+
+function clearSearchInput() {
+    if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+    if (searchInput) {
+        searchInput.value = '';
+        searchInput.focus();
+    }
+    updateSearchClearButton();
+    if (searchResults) searchResults.innerHTML = '';
+    setSearchState({ hint: true });
+}
+
+// ============================================================
+// ИИ-ассистент поиска фильмов
+// ============================================================
+
+let aiHistory = [];   // [{role:'user'|'assistant', content:str}]
+let aiBusy = false;
+const AI_GREETING = 'Привет! Я помогу найти фильм или сериал по описанию. Расскажите, что помните: сцену, сюжет, героев, диалог — что угодно.';
+
+function scrollAIToBottom() {
+    if (aiMessages) aiMessages.scrollTop = aiMessages.scrollHeight;
+}
+
+function renderAIBubble(role, text) {
+    if (!aiMessages) return null;
+    const div = document.createElement('div');
+    div.className = 'ai-msg ' + (role === 'user' ? 'user' : 'assistant');
+    div.textContent = text;
+    aiMessages.appendChild(div);
+    scrollAIToBottom();
+    return div;
+}
+
+function showAITyping() {
+    if (!aiMessages || $('ai-typing-indicator')) return;
+    const t = document.createElement('div');
+    t.className = 'ai-typing';
+    t.id = 'ai-typing-indicator';
+    t.innerHTML = '<span></span><span></span><span></span>';
+    aiMessages.appendChild(t);
+    scrollAIToBottom();
+}
+
+function hideAITyping() {
+    const t = $('ai-typing-indicator');
+    if (t) t.remove();
+}
+
+function renderAIMovies(movies) {
+    if (!aiMessages) return;
+    const wrap = document.createElement('div');
+    wrap.className = 'ai-movies';
+    movies.forEach((movie) => {
+        const card = document.createElement('div');
+        card.className = 'fav-card';
+        const ratingText = getMovieRatingText(movie);
+        const poster = getCardPosterUrl(movie) || movie.poster || '';
+        card.innerHTML = `
+            <img src="${poster}" alt="${movie.title}" loading="lazy">
+            <div class="fav-info">
+                <div class="fav-title">${movie.title}</div>
+                ${movie.year ? `<div class="fav-genres">${movie.year}</div>` : ''}
+                ${ratingText ? `<div class="fav-rating">⭐ ${ratingText}</div>` : ''}
+            </div>
+        `;
+        card.addEventListener('click', () => openPopup(movie, 'search'));
+        wrap.appendChild(card);
+    });
+    aiMessages.appendChild(wrap);
+    scrollAIToBottom();
+}
+
+function autoGrowAIInput() {
+    if (!aiInput) return;
+    aiInput.style.height = 'auto';
+    aiInput.style.height = Math.min(aiInput.scrollHeight, 120) + 'px';
+}
+
+function openAI() {
+    if (!aiOverlay) return;
+    aiOverlay.classList.add('active');
+    document.body.style.overflow = 'hidden';
+    bindOverlayViewport(aiOverlay);
+    userMenu.classList.remove('active');
+    if (aiHistory.length === 0 && aiMessages && !aiMessages.children.length) {
+        renderAIBubble('assistant', AI_GREETING);
+    }
+    setTimeout(() => aiInput && aiInput.focus(), 60);
+}
+
+function closeAI() {
+    if (!aiOverlay) return;
+    aiOverlay.classList.remove('active');
+    unbindOverlayViewport(aiOverlay);
+    if (!popupOverlay.classList.contains('active')) {
+        document.body.style.overflow = '';
+    }
+}
+
+async function sendAIMessage() {
+    if (aiBusy || !aiInput) return;
+    const text = (aiInput.value || '').trim();
+    if (!text) return;
+    aiInput.value = '';
+    autoGrowAIInput();
+    renderAIBubble('user', text);
+    aiHistory.push({ role: 'user', content: text });
+    aiBusy = true;
+    if (aiSendBtn) aiSendBtn.disabled = true;
+    showAITyping();
+    try {
+        // POST с телом — напрямую в бэкенд, минуя WebView-прокси (он не пересылает body).
+        const response = await fetch(`${BACKEND_POST_BASE}/api/ai/assistant`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json; charset=utf-8', Accept: 'application/json' },
+            body: JSON.stringify({ messages: aiHistory.slice(-12) })
+        });
+        hideAITyping();
+        if (!response.ok) throw new Error(`ai HTTP ${response.status}`);
+        const data = await response.json();
+        if (data.enabled === false) {
+            renderAIBubble('assistant', data.reply || 'ИИ-ассистент пока недоступен.');
+            return;
+        }
+        const reply = (data.reply || '').trim();
+        if (reply) {
+            renderAIBubble('assistant', reply);
+            aiHistory.push({ role: 'assistant', content: reply });
+        }
+        const movies = Array.isArray(data.movies)
+            ? data.movies.map(normalizeMovie).filter((m) => Number.isFinite(m.id))
+            : [];
+        if (movies.length) renderAIMovies(movies);
+        if (!reply && !movies.length) {
+            renderAIBubble('assistant', 'Не удалось ничего найти. Попробуйте вспомнить ещё детали.');
+        }
+    } catch (err) {
+        hideAITyping();
+        console.warn('AI error:', err);
+        renderAIBubble('assistant', 'Не получилось связаться с ИИ. Проверьте соединение и попробуйте снова.');
+    } finally {
+        aiBusy = false;
+        if (aiSendBtn) aiSendBtn.disabled = false;
+        if (aiInput) aiInput.focus();
+    }
 }
 
 // ============================================================
@@ -4077,6 +4562,74 @@ async function clearStatusListWithConfirmation(status) {
     void clearStatusListInCloud(status);
 }
 
+async function clearSkippedInCloud() {
+    if (!state.user) return;
+    try {
+        await setDoc(getUserDocRef(), { skipped: [], disliked: [] }, { merge: true });
+    } catch (err) {
+        console.error('Не удалось сбросить историю подбора в Firestore:', err);
+    }
+}
+
+/**
+ * Сброс подбора: очищает историю свайпов (пропущенные), историю показов
+ * и сигналы персонализации, затем формирует ленту заново.
+ * Сохранённые списки «Избранного» (Хочу посмотреть / Понравилось / Просмотрено)
+ * не затрагиваются — у них есть отдельные кнопки очистки.
+ */
+function performDiscoveryReset() {
+    const hadSkipped = state.skippedOrderIds.length > 0 || state.skippedIds.size > 0;
+
+    // Пропущенные (свайпы влево).
+    state.skippedIds.clear();
+    state.skippedOrderIds = [];
+    state.skippedDetailsById.clear();
+    state.skippedDetailsInFlight.clear();
+    state.skippedVisibleCount = FAVORITES_PAGE_SIZE;
+    syncSkippedArray();
+
+    // История показов и сигналы персонализации.
+    state.seenMovieIds = new Set();
+    saveSeenMoviesCache();
+    state.interactions = createEmptyInteractionsState();
+    saveInteractionsCache();
+
+    // Пересобираем предпочтения по оставшимся спискам и чистим кеши.
+    saveSkippedCache();
+    clearDiscoverFeedCache();
+
+    // Текущая лента сбрасывается и грузится заново, как при первом запуске.
+    state.movies = [];
+    state.currentIndex = 0;
+    state.page = 1;
+    state.isPrefetching = false;
+    if (cardStack) cardStack.innerHTML = '';
+
+    applyFavoritesState();
+
+    if (hadSkipped) {
+        void clearSkippedInCloud();
+    }
+
+    switchTab('discover');
+    loadMovies();
+}
+
+async function resetDiscoveryWithConfirmation() {
+    const confirmed = await openConfirmModal({
+        title: 'Сбросить подбор',
+        message: 'Вы уверены, что хотите сбросить подбор? История ваших свайпов будет очищена.',
+        confirmText: 'Сбросить',
+        cancelText: 'Отмена',
+        showCancel: true,
+        danger: true
+    });
+    if (!confirmed) return;
+
+    closeSettingsOverlay();
+    performDiscoveryReset();
+}
+
 function setupGestureNavigation() {
     const favoritesScreen = $('screen-favorites');
     const popup = $('popup');
@@ -4203,6 +4756,41 @@ function init() {
 
     // --- User Menu ---
     $('btn-user').addEventListener('click', toggleUserMenu);
+
+    // --- Поиск фильмов ---
+    $('btn-search').addEventListener('click', openSearch);
+    if ($('btn-search-back')) $('btn-search-back').addEventListener('click', closeSearch);
+    if (searchClearBtn) searchClearBtn.addEventListener('click', clearSearchInput);
+    if (searchInput) {
+        searchInput.addEventListener('input', handleSearchInput);
+        searchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+                runSearch(searchInput.value);
+                searchInput.blur();
+            } else if (e.key === 'Escape') {
+                closeSearch();
+            }
+        });
+    }
+
+    // --- ИИ-ассистент ---
+    $('btn-ai').addEventListener('click', openAI);
+    if ($('btn-ai-back')) $('btn-ai-back').addEventListener('click', closeAI);
+    if (aiSendBtn) aiSendBtn.addEventListener('click', sendAIMessage);
+    if (aiInput) {
+        aiInput.addEventListener('input', autoGrowAIInput);
+        aiInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendAIMessage();
+            } else if (e.key === 'Escape') {
+                closeAI();
+            }
+        });
+    }
+
     $('btn-open-settings').addEventListener('click', () => {
         userMenu.classList.remove('active');
         openSettingsOverlay();
@@ -4224,6 +4812,7 @@ function init() {
     $('btn-clear-watchlist').addEventListener('click', () => void clearStatusListWithConfirmation('watchlist'));
     $('btn-clear-liked').addEventListener('click', () => void clearStatusListWithConfirmation('liked'));
     $('btn-clear-watched').addEventListener('click', () => void clearStatusListWithConfirmation('watched'));
+    $('btn-reset-discovery').addEventListener('click', () => void resetDiscoveryWithConfirmation());
 
     if (settingsOverlay) {
         settingsOverlay.addEventListener('click', (e) => {
@@ -4279,6 +4868,11 @@ function init() {
         if (currentPopupContext.movie && currentPopupContext.status) {
             removeFromStatusList(currentPopupContext.movie.id, currentPopupContext.status);
             closePopup();
+        }
+    });
+    $('popup-restore').addEventListener('click', () => {
+        if (currentPopupContext.movie && currentPopupContext.status === 'skipped') {
+            restoreSkippedMovie(currentPopupContext.movie);
         }
     });
     if (popupToggleWatchlist) {

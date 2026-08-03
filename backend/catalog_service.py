@@ -179,3 +179,52 @@ class CatalogService:
             if movie.get("kinopoiskId") == film_id:
                 return movie
         return None
+
+    @staticmethod
+    def _norm_title(value: str) -> str:
+        return (value or "").strip().lower().replace("ё", "е")
+
+    def search(self, query: str, limit: int = 30) -> dict:
+        """Поиск фильмов/сериалов по названию в локальном каталоге.
+
+        Совпадение считается по nameRu/nameEn/nameOriginal. Ранжируем: точное
+        совпадение > начинается с запроса > содержит запрос; при равенстве —
+        по популярности (числу голосов). Формат items совпадает с get_movies.
+        """
+        self._reload_if_changed()
+        qn = self._norm_title(query)
+        if not qn:
+            return {"source": "catalog", "query": query, "total": 0, "items": []}
+
+        scored = []
+        for movie in self._items:
+            names = [
+                self._norm_title(movie.get("nameRu")),
+                self._norm_title(movie.get("nameEn")),
+                self._norm_title(movie.get("nameOriginal")),
+            ]
+            best = 0
+            for name in names:
+                if not name:
+                    continue
+                if name == qn:
+                    score = 3
+                elif name.startswith(qn):
+                    score = 2
+                elif qn in name:
+                    score = 1
+                else:
+                    continue
+                if score > best:
+                    best = score
+            if best:
+                scored.append((best, movie.get("ratingVoteCount") or 0, movie))
+
+        scored.sort(key=lambda item: (item[0], item[1]), reverse=True)
+        items = [movie for _, _, movie in scored[:limit]]
+        return {
+            "source": "catalog",
+            "query": query,
+            "total": len(items),
+            "items": items,
+        }

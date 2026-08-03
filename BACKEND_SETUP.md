@@ -16,10 +16,41 @@ Edit `.env` and set:
 - `KINOPOISK_API_KEY=<your_real_key>`
 - `ALLOWED_ORIGINS=<your frontend origin, or * for dev>`
 
+### Трейлеры через RuTube (вместо YouTube)
+YouTube в приложении отключён (в РФ недоступен). Трейлеры проигрываются из
+виджета Kinopoisk (рус. дубляж), а где его нет — ищутся в **RuTube** через
+открытый поиск (`https://rutube.ru/api/search/video/`) и отдаются встраиваемым
+плеером `https://rutube.ru/play/embed/{id}`. Токен НЕ нужен, работает в России.
+
+Настройки (все необязательные):
+- `ENABLE_RUTUBE_SEARCH=1` — включён по умолчанию (`0` — выключить).
+- `RUTUBE_TRAILER_CACHE_PATH=/opt/feelfilms/backend/rutube_trailer_cache.json`
+  — путь к файлу-кэшу найденных трейлеров RuTube.
+
+Логика в `get_movie_videos`: YouTube-ролики отбрасываются; если есть
+встраиваемый виджет Kinopoisk — используется он; иначе ищется трейлер в RuTube
+(с фильтром по длительности 20–420 сек, чтобы не подцепить полный фильм).
+
+### ИИ-ассистент поиска фильмов (Groq)
+Эндпоинт `POST /api/ai/assistant` помогает найти фильм по описанию сцены/сюжета.
+ИИ предлагает названия, а реальные карточки FeelFilm подбирает из каталога/поиска
+(ИИ свою базу не хранит). Архитектура модульная (`backend/ai_service.py`).
+
+Задай на сервере (иначе ассистент отвечает «пока не настроен»):
+- `GROQ_API_KEY=<ключ>` — **обязательно**. Бесплатно на https://console.groq.com
+  (Create API Key). Никаких OAuth — просто скопировать ключ.
+- `GROQ_MODEL=llama-3.3-70b-versatile` (необязательно, это значение по умолчанию).
+- `AI_PROVIDER=groq` (по умолчанию). Провайдер можно заменить на любой
+  OpenAI-совместимый: `AI_PROVIDER=openai`, `AI_API_KEY=...`, `AI_BASE_URL=...`,
+  `AI_MODEL=...` — логика приложения при этом не меняется.
+
 ## 2) Run backend
 ```powershell
-.\.venv\Scripts\python.exe -m uvicorn backend.server:app --host 0.0.0.0 --port 8000 --reload
+.\.venv\Scripts\python.exe -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
 ```
+
+Для Oracle Cloud используйте тот же entrypoint: `backend.main:app`.
+`backend.main:app` и `backend.server:app` теперь поднимают один и тот же API.
 
 Health check:
 - `http://127.0.0.1:8000/health`
@@ -28,11 +59,15 @@ Health check:
 - `GET /api/movies?mood=all&page=1`
 - `GET /api/movies/{film_id}`
 
+Архитектура:
+- Клиент (Android/WebView) -> ваш backend на Oracle Cloud
+- Backend (Oracle) -> Kinopoisk API (внешний источник фильмов)
+- Клиент НЕ ходит в Kinopoisk API напрямую
+
 ## 4) Client configuration
 - `main.py` reads backend URL from env `BACKEND_API_BASE` (default `http://127.0.0.1:8000`).
 - `app.js` uses:
   - `window.FEELFILMS_BACKEND_API_BASE` (if set), else
-  - `localStorage['feelfilms_backend_api_base']`, else
-  - `http://127.0.0.1:8000` for `file://` mode.
+  - `http://141.148.72.74:8000`.
 
 For production, set a public backend URL (HTTPS) in one of those two client options.

@@ -24,6 +24,7 @@ from .logger import setup_logging
 from .news_fetcher import KinopoiskSource, NewsFetcher
 from .posted_store import PostedStore
 from .scheduler import Scheduler
+from .trailer_search import RutubeTrailerSearch
 from .vk_client import VKClient, VKError
 
 
@@ -54,6 +55,7 @@ class Bot:
             temperature=cfg.ai_temperature,
         )
         self.images = ImageHandler(timeout=cfg.request_timeout)
+        self.trailer = RutubeTrailerSearch(timeout=cfg.request_timeout)
         self.vk = VKClient(
             token=cfg.vk_token,
             group_id=cfg.vk_group_id,
@@ -76,16 +78,13 @@ class Bot:
             return False
 
         # --- Трейлер ---
-        # Только видео из VK: ищем ролик по названию фильма и прикрепляем его
-        # как проигрываемое видео. Если не нашли — пост идёт без трейлера.
-        # Никаких текстовых ссылок (в т.ч. YouTube) в пост не добавляем.
-        trailer_video = None
+        # Ищем ролик на RuTube (публичный API, без токена, играется в РФ).
+        # Ссылка идёт в текст поста — VK превращает её в превью-карточку с
+        # плеером. Прикрепить встроенное VK-видео как attachment нельзя:
+        # video.search и video.save недоступны с group-токеном.
+        item.trailer_url = ""
         if self.cfg.attach_trailer_link:
-            query = f"{item.title} трейлер"
-            if item.year:
-                query += f" {item.year}"
-            trailer_video = self.vk.search_video(query)
-        item.trailer_url = ""  # текстовую ссылку на трейлер никогда не выводим
+            item.trailer_url = self.trailer.search(item.title, item.year) or ""
 
         message = self.generator.generate(item, hashtags=self.cfg.hashtags, cta=self.cfg.cta)
 
@@ -94,25 +93,23 @@ class Bot:
         if dry_run:
             self.log.info("[DRY-RUN] Пост НЕ будет опубликован. Текст:\n%s", message)
             self.log.info(
-                "[DRY-RUN] Постер: %s (%s) | Видео-трейлер: %s",
+                "[DRY-RUN] Постер: %s (%s) | RuTube-трейлер: %s",
                 "есть" if image_bytes else "нет",
                 item.poster_url or "—",
-                trailer_video or "нет",
+                item.trailer_url or "нет",
             )
             return True
 
         attachments = []
 
         # Загружаем постер (если удалось скачать). Пост без картинки всё равно уходит.
+        # NB: photos.getWallUploadServer недоступен group-токену — при таком
+        # токене шаг молча упадёт, пост уйдёт без постера.
         if image_bytes:
             try:
                 attachments.append(self.vk.upload_wall_photo(image_bytes))
             except VKError as exc:
                 self.log.warning("Не удалось прикрепить постер: %s. Публикую без него.", exc)
-
-        # Прикрепляем найденный видео-трейлер.
-        if trailer_video:
-            attachments.append(trailer_video)
 
         try:
             post_id = self.vk.post_to_wall(message, attachments=attachments)

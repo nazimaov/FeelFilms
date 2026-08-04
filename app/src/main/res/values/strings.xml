@@ -1,4 +1,8 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">FeelFilms</string>
+    <string name="app_name">FeelFilm</string>
+    <string name="yandex_banner_ad_unit_id">R-M-19565179-1</string>
+    <string name="yandex_interstitial_ad_unit_id">R-M-19565179-2</string>
+    <integer name="interstitial_every_n_opens">8</integer>
+    <integer name="interstitial_every_n_swipes">15</integer>
 </resources>

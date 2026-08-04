@@ -23,6 +23,10 @@ import {
     doc,
     setDoc,
     getDoc,
+    addDoc,
+    collection,
+    serverTimestamp,
+    increment,
     arrayUnion,
     arrayRemove
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
@@ -1191,6 +1195,19 @@ async function handleRegister(e) {
         await updateProfile(cred.user, { displayName: name });
         saveProfileNameCache(name, cred.user.uid);
 
+        // Отмечаем регистрацию для админ-статистики (createdAt/email/displayName
+        // в users/{uid}) — merge, чтобы не затирать возможные существующие поля.
+        try {
+            await setDoc(doc(db, 'users', cred.user.uid), {
+                email: cred.user.email || '',
+                displayName: name,
+                createdAt: serverTimestamp(),
+                lastActiveAt: serverTimestamp()
+            }, { merge: true });
+        } catch (metaErr) {
+            console.warn('Не удалось записать метаданные пользователя:', metaErr);
+        }
+
         console.log('✅ Регистрация успешна:', cred.user.email);
         // onAuthStateChanged автоматически переключит на основной экран
     } catch (err) {
@@ -1267,6 +1284,10 @@ function setupAuthObserver() {
             const isNewUserSession = state.user?.uid !== user.uid;
             state.user = user;
             showMainApp(user, isNewUserSession);
+            // Отмечаем активность — для админ-статистики. Не блокируем UI.
+            void markUserActive(user);
+            // Показываем «Админ-панель» в меню только админам.
+            applyAdminMenuVisibility(user);
         } else {
             // ❌ Пользователь вышел
             state.user = null;
@@ -1442,6 +1463,71 @@ function toMovieFromDetails(id, details) {
         normalized.title = `Film #${id}`;
     }
     return normalized;
+}
+
+// ============================================================
+// Метаданные пользователя для админ-статистики
+// (users/{uid}: createdAt, lastActiveAt, email, displayName)
+// ============================================================
+
+// Не чаще одного раза в час, чтобы не жечь запросы к Firestore при каждом
+// переоткрытии приложения.
+const ACTIVE_TOUCH_THROTTLE_MS = 60 * 60 * 1000;
+let lastActiveTouchAt = 0;
+
+// Whitelist админов — синхронизирован с admin/admin.js и backend/admin_auth.py.
+// Кнопка «Админ-панель» в меню пользователя видна только этим email'ам.
+const ADMIN_EMAILS = new Set(['nazimaov2@gmail.com']);
+const ADMIN_PANEL_URL = 'http://185.73.126.11:8000/admin/';
+
+function applyAdminMenuVisibility(user) {
+    const btn = $('btn-admin-panel');
+    if (!btn) return;
+    const email = (user?.email || '').toLowerCase();
+    btn.style.display = ADMIN_EMAILS.has(email) ? '' : 'none';
+}
+
+async function markUserActive(user) {
+    if (!user || !user.uid) return;
+    const now = Date.now();
+    if (now - lastActiveTouchAt < ACTIVE_TOUCH_THROTTLE_MS) return;
+    lastActiveTouchAt = now;
+    try {
+        await setDoc(doc(db, 'users', user.uid), {
+            email: user.email || '',
+            displayName: user.displayName || '',
+            lastActiveAt: serverTimestamp(),
+            // createdAt при merge не перезатрёт существующее значение —
+            // если поля ещё нет (старый пользователь), проставляем сейчас как
+            // первое известное касание, чтобы не терять учёт совсем.
+            createdAt: serverTimestamp()
+        }, { merge: true });
+    } catch (err) {
+        console.warn('Не удалось отметить активность пользователя:', err);
+    }
+}
+
+// ============================================================
+// Сообщение об ошибке (bug-report) — сохраняется в Firestore
+// (коллекция bug_reports), обрабатывается в админ-панели.
+// ============================================================
+
+async function submitBugReport({ movieId, movieTitle, movieYear, reason, comment }) {
+    if (!state.user) throw new Error('Требуется вход в аккаунт.');
+    const payload = {
+        movieId: Number(movieId) || null,
+        movieTitle: (movieTitle || '').toString().slice(0, 200),
+        movieYear: movieYear ? String(movieYear).slice(0, 10) : '',
+        reason: (reason || 'other').toString().slice(0, 40),
+        comment: (comment || '').toString().slice(0, 1000),
+        userUid: state.user.uid,
+        userEmail: state.user.email || '',
+        userName: state.user.displayName || '',
+        appVersion: resolveAppVersion(),
+        status: 'new',
+        createdAt: serverTimestamp()
+    };
+    await addDoc(collection(db, 'bug_reports'), payload);
 }
 
 async function readMovieStatusesFromCloud() {
@@ -4316,6 +4402,74 @@ function closeAboutModal() {
     aboutModalOverlay.classList.remove('active');
 }
 
+// ============================================================
+// Модалка «Сообщить об ошибке»
+// ============================================================
+
+let currentBugMovie = null;
+
+function setBugStatus(text, kind) {
+    const el = $('bug-status');
+    if (!el) return;
+    el.textContent = text || '';
+    el.classList.remove('error', 'ok');
+    if (kind) el.classList.add(kind);
+}
+
+function openBugModal(movie) {
+    const overlay = $('bug-modal-overlay');
+    if (!overlay || !movie) return;
+    currentBugMovie = movie;
+    const info = $('bug-modal-movie');
+    if (info) {
+        const year = movie.year ? ` (${movie.year})` : '';
+        info.textContent = `${movie.title || ''}${year}`;
+    }
+    document.querySelectorAll('input[name="bug-reason"]').forEach((r) => { r.checked = false; });
+    const comment = $('bug-comment'); if (comment) comment.value = '';
+    setBugStatus('');
+    const sendBtn = $('btn-bug-send'); if (sendBtn) sendBtn.disabled = false;
+    overlay.classList.add('active');
+}
+
+function closeBugModal() {
+    const overlay = $('bug-modal-overlay');
+    if (overlay) overlay.classList.remove('active');
+    currentBugMovie = null;
+}
+
+async function sendBugReport() {
+    if (!currentBugMovie) return;
+    if (!state.user) {
+        setBugStatus('Сначала войдите в аккаунт.', 'error');
+        return;
+    }
+    const reason = document.querySelector('input[name="bug-reason"]:checked')?.value;
+    if (!reason) {
+        setBugStatus('Выберите тип ошибки.', 'error');
+        return;
+    }
+    const comment = ($('bug-comment')?.value || '').trim();
+    const sendBtn = $('btn-bug-send');
+    if (sendBtn) sendBtn.disabled = true;
+    setBugStatus('Отправляем…');
+    try {
+        await submitBugReport({
+            movieId: currentBugMovie.id,
+            movieTitle: currentBugMovie.title || '',
+            movieYear: currentBugMovie.year || '',
+            reason,
+            comment
+        });
+        setBugStatus('Спасибо! Сообщение отправлено.', 'ok');
+        setTimeout(() => closeBugModal(), 900);
+    } catch (err) {
+        console.warn('bug-report send failed:', err);
+        setBugStatus('Не удалось отправить. Попробуйте позже.', 'error');
+        if (sendBtn) sendBtn.disabled = false;
+    }
+}
+
 function closeConfirmModalWithResult(result) {
     if (confirmModalOverlay) {
         confirmModalOverlay.classList.remove('active');
@@ -4795,6 +4949,13 @@ function init() {
         userMenu.classList.remove('active');
         openSettingsOverlay();
     });
+
+    // Кнопка «Админ-панель» — открывает панель в системном браузере
+    // телефона (не в WebView, чтобы Firebase-сессии не пересекались).
+    $('btn-admin-panel').addEventListener('click', () => {
+        userMenu.classList.remove('active');
+        openExternalUrl(ADMIN_PANEL_URL);
+    });
     $('btn-logout').addEventListener('click', () => {
         userMenu.classList.remove('active');
         handleLogout();
@@ -4875,6 +5036,17 @@ function init() {
             restoreSkippedMovie(currentPopupContext.movie);
         }
     });
+    $('popup-report').addEventListener('click', () => {
+        if (currentPopupContext.movie) openBugModal(currentPopupContext.movie);
+    });
+    if ($('btn-bug-close')) $('btn-bug-close').addEventListener('click', closeBugModal);
+    if ($('btn-bug-cancel')) $('btn-bug-cancel').addEventListener('click', closeBugModal);
+    if ($('btn-bug-send')) $('btn-bug-send').addEventListener('click', sendBugReport);
+    if ($('bug-modal-overlay')) {
+        $('bug-modal-overlay').addEventListener('click', (e) => {
+            if (e.target === $('bug-modal-overlay')) closeBugModal();
+        });
+    }
     if (popupToggleWatchlist) {
         popupToggleWatchlist.addEventListener('click', () => handlePopupStatusActionClick(popupToggleWatchlist));
     }

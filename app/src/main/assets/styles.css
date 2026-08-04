@@ -1749,6 +1749,15 @@ body.app-booting #main-app {
     color: var(--accent);
 }
 
+.user-menu-item-admin {
+    color: #fbbf24;  /* тёплый «золотой» — сразу видно, что это админский пункт */
+}
+
+.user-menu-item-admin:hover {
+    background: rgba(251, 191, 36, 0.12);
+    color: #fbbf24;
+}
+
 /* --- Settings Screen --- */
 .settings-overlay {
     position: fixed;
@@ -2436,4 +2445,111 @@ body.app-booting #main-app {
 .ai-send-btn:disabled {
     opacity: 0.5;
     cursor: default;
+}
+
+/* ==========================================================
+   Сообщить об ошибке (кнопка в карточке + модалка)
+   ========================================================== */
+.report-btn {
+    width: 100%;
+    padding: 10px 14px;
+    margin-top: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 13px;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.report-btn .report-flag {
+    color: #fbbf24;
+    /* Тёплый предупреждающий цвет — флажок сразу бросается в глаза,
+       при этом кнопка остаётся ненавязчивой (не основное действие). */
+    transition: transform var(--transition);
+}
+
+.report-btn:hover {
+    color: var(--text-primary);
+    border-color: rgba(251, 191, 36, 0.35);
+}
+
+.report-btn:hover .report-flag {
+    transform: scale(1.1) rotate(-6deg);
+}
+
+.bug-modal {
+    max-width: 420px;
+}
+
+.bug-reasons {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 14px 0 12px;
+    text-align: left;
+}
+
+.bug-reason {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--radius-sm);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    font-size: 14px;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.bug-reason:has(input:checked) {
+    border-color: var(--accent);
+    background: rgba(233, 69, 96, 0.08);
+}
+
+.bug-reason input {
+    accent-color: var(--accent);
+    margin: 0;
+}
+
+#bug-comment {
+    width: 100%;
+    resize: vertical;
+    min-height: 60px;
+    padding: 10px 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius-sm);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 14px;
+    outline: none;
+    transition: border-color var(--transition);
+}
+
+#bug-comment:focus {
+    border-color: var(--accent);
+}
+
+.bug-status {
+    min-height: 20px;
+    margin-top: 10px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    text-align: center;
+}
+
+.bug-status.error {
+    color: var(--accent);
+}
+
+.bug-status.ok {
+    color: #4ade80;
 }

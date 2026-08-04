@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 7
+    "counter": 8
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -8,6 +8,12 @@
       "title": "Миральес",
       "post_id": 22,
       "type": "premiere"
+    },
+    "kinopoisk:6750360": {
+      "posted_at": 1785833638,
+      "title": "Горничная",
+      "post_id": 23,
+      "type": "recommendation"
     }
   }
 }

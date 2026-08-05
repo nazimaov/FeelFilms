@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 8
+    "counter": 9
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -14,6 +14,12 @@
       "title": "Горничная",
       "post_id": 23,
       "type": "recommendation"
+    },
+    "kinopoisk:464963": {
+      "posted_at": 1785949216,
+      "title": "Игра престолов",
+      "post_id": 24,
+      "type": "fact"
     }
   }
 }

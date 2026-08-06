@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 9
+    "counter": 10
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -20,6 +20,12 @@
       "title": "Игра престолов",
       "post_id": 24,
       "type": "fact"
+    },
+    "kinopoisk:602885": {
+      "posted_at": 1786021725,
+      "title": "Мотор Сити",
+      "post_id": 25,
+      "type": "premiere"
     }
   }
 }

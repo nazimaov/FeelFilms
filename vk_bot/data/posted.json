@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 11
+    "counter": 12
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -32,6 +32,12 @@
       "title": "Супергёрл",
       "post_id": 26,
       "type": "recommendation"
+    },
+    "kinopoisk:10355286": {
+      "posted_at": 1786136803,
+      "title": "Обсессия",
+      "post_id": 27,
+      "type": "fact"
     }
   }
 }

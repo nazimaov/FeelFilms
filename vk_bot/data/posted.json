@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 10
+    "counter": 11
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -26,6 +26,12 @@
       "title": "Мотор Сити",
       "post_id": 25,
       "type": "premiere"
+    },
+    "kinopoisk:1184898": {
+      "posted_at": 1786088634,
+      "title": "Супергёрл",
+      "post_id": 26,
+      "type": "recommendation"
     }
   }
 }

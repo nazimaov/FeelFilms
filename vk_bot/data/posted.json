@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 12
+    "counter": 13
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -38,6 +38,12 @@
       "title": "Обсессия",
       "post_id": 27,
       "type": "fact"
+    },
+    "kinopoisk:13118293": {
+      "posted_at": 1786189592,
+      "title": "Леверенц. Божественная тьма",
+      "post_id": 28,
+      "type": "premiere"
     }
   }
 }

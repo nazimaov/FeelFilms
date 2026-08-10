@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 13
+    "counter": 14
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -44,6 +44,12 @@
       "title": "Леверенц. Божественная тьма",
       "post_id": 28,
       "type": "premiere"
+    },
+    "kinopoisk:1309570": {
+      "posted_at": 1786363224,
+      "title": "Человек-паук: Нет пути домой",
+      "post_id": 30,
+      "type": "recommendation"
     }
   }
 }

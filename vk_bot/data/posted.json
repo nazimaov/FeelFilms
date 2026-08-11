@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 15
+    "counter": 16
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -56,6 +56,12 @@
       "title": "Холод",
       "post_id": 31,
       "type": "fact"
+    },
+    "kinopoisk:8498711": {
+      "posted_at": 1786464927,
+      "title": "Во власти страха",
+      "post_id": 32,
+      "type": "premiere"
     }
   }
 }

@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 16
+    "counter": 17
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -62,6 +62,12 @@
       "title": "Во власти страха",
       "post_id": 32,
       "type": "premiere"
+    },
+    "kinopoisk:958607": {
+      "posted_at": 1786482171,
+      "title": "Леди Баг и Супер-Кот",
+      "post_id": 33,
+      "type": "recommendation"
     }
   }
 }

@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 14
+    "counter": 15
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -50,6 +50,12 @@
       "title": "Человек-паук: Нет пути домой",
       "post_id": 30,
       "type": "recommendation"
+    },
+    "kinopoisk:7036356": {
+      "posted_at": 1786433722,
+      "title": "Холод",
+      "post_id": 31,
+      "type": "fact"
     }
   }
 }

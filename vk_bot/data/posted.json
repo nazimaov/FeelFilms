@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 17
+    "counter": 18
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -68,6 +68,12 @@
       "title": "Леди Баг и Супер-Кот",
       "post_id": 33,
       "type": "recommendation"
+    },
+    "kinopoisk:1312253": {
+      "posted_at": 1786521169,
+      "title": "Реинкарнация безработного: История о приключениях в другом мире",
+      "post_id": 34,
+      "type": "fact"
     }
   }
 }

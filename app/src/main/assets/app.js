@@ -348,6 +348,7 @@ const state = {
     allCategories: CATEGORY_DEFINITIONS,
     selectedCategoryIds: new Set(),
     selectedCountry: '',
+    selectedYear: 0, // конкретный год выпуска, 0 — любой
     preferences: {
         categoryWeights: {},
         typeWeights: {},
@@ -414,7 +415,8 @@ function getDiscoverFeedCacheKey() {
 function getDiscoverFilterSignature() {
     const categories = [...state.selectedCategoryIds].sort().join(',');
     const country = normalizeSelectedCountryValue(state.selectedCountry);
-    return `${categories}::${country}`;
+    // Год входит в подпись: иначе после его смены показался бы старый кэш ленты.
+    return `${categories}::${country}::${state.selectedYear || 0}`;
 }
 
 function loadProfileNameCache(uid = state.user?.uid) {
@@ -1165,6 +1167,9 @@ const moodFilters = $('mood-filters');
 const countryPickerOverlay = $('country-picker-overlay');
 const countryPickerList = $('country-picker-list');
 const countryPickerClose = $('country-picker-close');
+const yearPickerOverlay = $('year-picker-overlay');
+const yearPickerList = $('year-picker-list');
+const yearPickerClose = $('year-picker-close');
 const appAnnouncement = $('app-announcement');
 const appAnnouncementTitle = $('app-announcement-title');
 const appAnnouncementText = $('app-announcement-text');
@@ -1421,6 +1426,7 @@ function showAuthScreen() {
     };
     state.selectedCategoryIds.clear();
     state.selectedCountry = '';
+    state.selectedYear = 0;
     state.seenMovieIds = new Set();
     state.interactions = createEmptyInteractionsState();
     state.lastShownMovieId = null;
@@ -2077,7 +2083,33 @@ function countryNameToIsoCode(countryName) {
     return COUNTRY_CODE_BY_NAME[normalized] || null;
 }
 
+/**
+ * Умеет ли устройство рисовать флаги-эмодзи.
+ *
+ * На Android TV шрифта с флагами нет, и вместо 🇷🇺 показываются буквы «RU».
+ * Проверяем один раз: если флаг занимает столько же места, сколько две
+ * обычные буквы, значит он не нарисован — и тогда флаги вообще не выводим,
+ * оставляя одно название страны.
+ */
+let flagEmojiSupport = null;
+
+function canRenderFlagEmoji() {
+    if (flagEmojiSupport !== null) return flagEmojiSupport;
+    // Проверять возможности шрифта из кода ненадёжно: canvas рисует своим
+    // набором шрифтов, а не тем, которым набрана страница. Поэтому решаем
+    // по устройству — на телевизоре шрифта с флагами нет, и вместо 🇷🇺
+    // показываются буквы «RU». Везде остальном флаги были и остаются.
+    flagEmojiSupport = !(window.FeelFilmTV && window.FeelFilmTV.isTv);
+    return flagEmojiSupport;
+}
+
+/** Флаг, если устройство умеет их показывать. Иначе — пустая строка. */
+function safeFlag(flag) {
+    return canRenderFlagEmoji() ? (flag || '') : '';
+}
+
 function isoToFlagEmoji(isoCode) {
+    if (!canRenderFlagEmoji()) return '';
     if (!isoCode || isoCode.length !== 2) return '';
     const upper = isoCode.toUpperCase();
     const a = upper.charCodeAt(0);
@@ -2087,6 +2119,15 @@ function isoToFlagEmoji(isoCode) {
 }
 
 function getPrimaryCountryName(movie) {
+    // Если включён фильтр по стране, показываем именно её: у совместных
+    // production-фильмов первой в списке может стоять другая страна, и
+    // тогда кажется, будто фильтр не сработал. Например, «Заложник» —
+    // это Россия, ОАЭ и Турция сразу.
+    const selectedCountry = normalizeSelectedCountryValue(state.selectedCountry);
+    if (selectedCountry && movieMatchesSelectedCountry(movie)) {
+        return selectedCountry;
+    }
+
     if (Array.isArray(movie.countries) && movie.countries.length > 0) {
         return movie.countries[0];
     }
@@ -2463,9 +2504,6 @@ function sortColdStartMovies(movies) {
 function renderCategoryFilters() {
     if (!moodFilters) return;
 
-    // Country filter section is disabled in UI.
-    state.selectedCountry = '';
-
     const selected = [...state.selectedCategoryIds];
     const selectedSet = new Set(selected);
     const nonSelected = state.allCategories.filter((category) => !selectedSet.has(category.id) && category.id !== 'all');
@@ -2477,6 +2515,10 @@ function renderCategoryFilters() {
 
     state.selectedCountry = normalizeSelectedCountryValue(state.selectedCountry);
     moodFilters.innerHTML = '';
+
+    // Страна и год — первыми в ряду: это фильтры «поверх» жанров.
+    moodFilters.appendChild(createCountryFilterButton());
+    moodFilters.appendChild(createYearFilterButton());
 
     sorted.forEach((category) => {
         const button = document.createElement('button');
@@ -2496,6 +2538,95 @@ function renderCategoryFilters() {
         button.addEventListener('click', () => toggleCategory(category.id));
         moodFilters.appendChild(button);
     });
+}
+
+/** Кнопка выбора страны в ряду фильтров. */
+function createCountryFilterButton() {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'mood-tag filter-picker';
+    button.id = 'filter-country';
+
+    const selectedName = normalizeSelectedCountryValue(state.selectedCountry);
+    if (selectedName) {
+        const option = COUNTRY_FILTER_OPTIONS.find(
+            (item) => normalizeTextForCompare(item.name) === normalizeTextForCompare(selectedName)
+        );
+        const flag = safeFlag(option ? option.flag : '🌍');
+        button.textContent = flag ? `${flag} ${selectedName}` : selectedName;
+        button.classList.add('selected', 'pinned');
+    } else {
+        button.textContent = '🌍 Страна';
+    }
+
+    button.addEventListener('click', openCountryPicker);
+    return button;
+}
+
+/** Кнопка выбора года в ряду фильтров. */
+function createYearFilterButton() {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'mood-tag filter-picker';
+    button.id = 'filter-year';
+
+    if (state.selectedYear) {
+        button.textContent = String(state.selectedYear);
+        button.classList.add('selected', 'pinned');
+    } else {
+        button.textContent = 'Год';
+    }
+
+    button.addEventListener('click', openYearPicker);
+    return button;
+}
+
+function closeYearPicker() {
+    if (!yearPickerOverlay) return;
+    yearPickerOverlay.classList.remove('active');
+    document.body.style.overflow = '';
+}
+
+function selectYear(year) {
+    state.selectedYear = Number(year) || 0;
+    closeYearPicker();
+    state.page = 1;
+    renderCategoryFilters();
+    loadMovies();
+}
+
+function renderYearPickerList() {
+    if (!yearPickerList) return;
+    yearPickerList.innerHTML = '';
+
+    const addOption = (label, value) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'country-item';
+        if (Number(value) === Number(state.selectedYear)) button.classList.add('selected');
+        button.innerHTML = `
+            <span class="country-flag">${value ? '' : '🎬'}</span>
+            <span class="country-name">${label}</span>
+        `;
+        button.addEventListener('click', () => selectYear(value));
+        yearPickerList.appendChild(button);
+    };
+
+    addOption('Любой год', 0);
+
+    // Конкретный год выпуска: от текущего и вглубь. Список прокручивается,
+    // на пульте это привычный выбор из перечня.
+    const currentYear = new Date().getFullYear();
+    for (let year = currentYear; year >= 1990; year -= 1) {
+        addOption(String(year), year);
+    }
+}
+
+function openYearPicker() {
+    if (!yearPickerOverlay) return;
+    renderYearPickerList();
+    yearPickerOverlay.classList.add('active');
+    document.body.style.overflow = 'hidden';
 }
 
 function closeCountryPicker() {
@@ -2523,7 +2654,7 @@ function renderCountryPickerList() {
     resetBtn.className = 'country-item';
     if (!selectedCountry) resetBtn.classList.add('selected');
     resetBtn.innerHTML = `
-        <span class="country-flag">🌍</span>
+        <span class="country-flag">${safeFlag('🌍')}</span>
         <span class="country-name">Любая страна</span>
     `;
     resetBtn.addEventListener('click', () => selectCountry(''));
@@ -2536,7 +2667,7 @@ function renderCountryPickerList() {
         const isSelected = normalizeTextForCompare(country.name) === selectedCountry;
         if (isSelected) btn.classList.add('selected');
         btn.innerHTML = `
-            <span class="country-flag">${country.flag}</span>
+            <span class="country-flag">${safeFlag(country.flag)}</span>
             <span class="country-name">${country.name}</span>
         `;
         btn.addEventListener('click', () => selectCountry(country.name));
@@ -2601,6 +2732,13 @@ async function fetchMovies(options = 1) {
         categories,
         content_type: contentType
     });
+
+    // Страну и год отбирает сервер — по всему каталогу. Раньше это делалось
+    // уже здесь, по присланной странице, и при узком выборе лента быстро
+    // заканчивалась.
+    const country = normalizeSelectedCountryValue(state.selectedCountry);
+    if (country) query.set('country', country);
+    if (state.selectedYear) query.set('year', String(state.selectedYear));
     const requestUrl = `${BACKEND_API_BASE}/api/movies?${query.toString()}`;
     const response = await fetch(requestUrl, {
         method: 'GET',
@@ -5074,6 +5212,15 @@ function init() {
     if (countryPickerOverlay) {
         countryPickerOverlay.addEventListener('click', (e) => {
             if (e.target === countryPickerOverlay) closeCountryPicker();
+        });
+    }
+
+    if (yearPickerClose) {
+        yearPickerClose.addEventListener('click', closeYearPicker);
+    }
+    if (yearPickerOverlay) {
+        yearPickerOverlay.addEventListener('click', (e) => {
+            if (e.target === yearPickerOverlay) closeYearPicker();
         });
     }
 

@@ -77,7 +77,10 @@ html.tv-mode .confirm-modal-btn.tv-focused {
     z-index: 5;
 }
 
-/* Кнопки, теги, пункты списков */
+/* Кнопки, теги, пункты списков.
+   Фокус НЕ двигает элементы: на телевизоре подпрыгивающие кнопки читаются
+   как дёрганье, а соседи начинают перекрывать друг друга. Выделяем
+   цветом, рамкой и свечением — элемент остаётся на месте. */
 html.tv-mode button.tv-focused,
 html.tv-mode .mood-tag.tv-focused,
 html.tv-mode .country-item.tv-focused,
@@ -85,27 +88,24 @@ html.tv-mode a.tv-focused {
     color: var(--text-primary);
     border-color: var(--accent);
     box-shadow: 0 0 0 3px var(--accent-glow);
-    transform: scale(1.06);
 }
 
 /* Круглые кнопки действий сохраняют свой цвет, меняется только подсветка */
 html.tv-mode .action-btn.tv-focused {
-    transform: scale(1.14);
-    box-shadow: 0 0 0 4px var(--accent-glow), 0 10px 30px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 0 0 4px var(--accent-glow), 0 8px 24px rgba(0, 0, 0, 0.45);
 }
 
 /* Вкладки «Подбор» / «Избранное» */
 html.tv-mode .tab-btn.tv-focused {
     background: rgba(233, 69, 96, 0.16);
     color: var(--text-primary);
-    transform: scale(1.04);
+    box-shadow: 0 0 0 3px var(--accent-glow);
 }
 
-/* Карточки — тот же приём, что и в мобильном :hover, только заметнее */
+/* Карточки в списках: рамка и свечение, без скачка размера */
 html.tv-mode .fav-card.tv-focused {
-    transform: translateY(-6px) scale(1.07);
     border-color: var(--accent);
-    box-shadow: 0 18px 44px rgba(0, 0, 0, 0.55), 0 0 0 3px var(--accent-glow);
+    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.5), 0 0 0 3px var(--accent-glow);
 }
 
 html.tv-mode .movie-card.tv-focused {
@@ -163,15 +163,19 @@ html.tv-mode .ai-btn img {
 }
 
 html.tv-mode .tab-nav {
-    gap: clamp(8px, 1vw, 20px);
-    padding: clamp(2px, 0.4vh, 8px) clamp(8px, 1vw, 20px) clamp(4px, 0.8vh, 16px);
-    max-width: clamp(600px, 55vw, 1200px);
+    /* Вкладки не должны слипаться: между ними заметный промежуток,
+       а по краям — место под рамку фокуса. */
+    gap: clamp(20px, 2.4vw, 56px);
+    padding: clamp(6px, 0.8vh, 14px) clamp(8px, 1vw, 20px) clamp(10px, 1.2vh, 22px);
+    max-width: clamp(680px, 62vw, 1400px);
     margin: 0 auto;
 }
 
 html.tv-mode .tab-btn {
     font-size: clamp(14px, 1.9vh, 28px);
-    padding: clamp(6px, 1vh, 18px) 0;
+    /* Боковые отступы в мобильной вёрстке нулевые — на телевизоре из-за
+       этого рамка фокуса шла вплотную к надписи. */
+    padding: clamp(8px, 1.1vh, 18px) clamp(20px, 2vw, 44px);
     gap: clamp(6px, 0.6vw, 14px);
 }
 
@@ -185,8 +189,11 @@ html.tv-mode .tab-btn svg {
    -------------------------------------------------------------------------- */
 
 html.tv-mode .mood-filters {
-    gap: clamp(8px, 0.8vw, 18px);
-    padding: 0 clamp(8px, 1vw, 20px) clamp(6px, 1vh, 18px);
+    gap: clamp(10px, 1vw, 22px);
+    /* Полоса фильтров прокручивается по горизонтали и потому обрезает
+       всё, что выходит за её границы. Без отступов сверху и снизу
+       свечение вокруг выбранного фильтра срезалось. */
+    padding: clamp(5px, 0.7vh, 12px) clamp(8px, 1vw, 20px) clamp(10px, 1.2vh, 22px);
     justify-content: flex-start;
 }
 
@@ -211,16 +218,17 @@ html.tv-mode .card-stack {
 }
 
 html.tv-mode .movie-card {
-    /* Карточка занимает всё место, которое осталось между фильтрами и
-       кнопками действий, а ширина считается по прежнему соотношению 2/3.
-       Привязка к контейнеру (а не к vh) гарантирует, что на любом
-       телевизоре — 1080p, 4K или нестандартной приставке — на экран
-       поместится и карточка, и весь ряд кнопок. */
+    /* На телевизоре карточка широкая: экран горизонтальный, и обложка
+       по формату кадра смотрится естественнее вертикального постера.
+       Размер привязан к контейнеру, а не к vh, — так на любом
+       телевизоре на экран помещается и карточка, и весь ряд кнопок. */
     width: auto;
-    height: 100%;
-    max-height: 100%;
-    max-width: min(90vw, 52vh);
-    aspect-ratio: 2/3;
+    /* Не во всю высоту контейнера: нужен воздух сверху и снизу, иначе
+       обложка визуально наезжает на фильтры и на ряд кнопок. */
+    height: 88%;
+    max-height: 88%;
+    max-width: 78vw;
+    aspect-ratio: 16/9;
     /* Перетаскивание мышью на телевизоре недоступно — это нормально:
        те же действия выполняются стрелками пульта и кнопками ниже. */
     touch-action: auto;
@@ -249,8 +257,10 @@ html.tv-mode .swipe-stamp {
 
 /* Ряд действий: «Пропустить», «Нравится», «Хочу посмотреть», «Уже посмотрел» */
 html.tv-mode .swipe-actions {
-    gap: clamp(16px, 1.8vw, 40px);
-    padding: clamp(8px, 1.2vh, 22px) clamp(16px, 1.6vw, 32px) clamp(8px, 1.2vh, 24px);
+    /* Круглые кнопки разнесены, чтобы свечение вокруг одной не касалось
+       соседней. */
+    gap: clamp(22px, 2.4vw, 52px);
+    padding: clamp(10px, 1.4vh, 24px) clamp(16px, 1.6vw, 32px) clamp(10px, 1.4vh, 26px);
 }
 
 html.tv-mode .action-btn {
@@ -278,14 +288,23 @@ html.tv-mode .favorites-section-title {
 }
 
 html.tv-mode .favorites-grid {
-    grid-template-columns: repeat(5, 1fr);
+    /* Плитки широкие, поэтому колонок меньше, чем было бы с постерами. */
+    grid-template-columns: repeat(3, 1fr);
     gap: clamp(14px, 1.4vw, 32px);
 }
 
 @media (min-width: 1600px) {
     html.tv-mode .favorites-grid {
-        grid-template-columns: repeat(6, 1fr);
+        grid-template-columns: repeat(4, 1fr);
     }
+}
+
+/* Обложка кадром — как на карточке подбора. Если у фильма широкой
+   обложки нет, здесь останется обычный постер, вписанный по центру. */
+html.tv-mode .fav-card img {
+    aspect-ratio: 16/9;
+    object-fit: cover;
+    object-position: center;
 }
 
 html.tv-mode .fav-card .fav-title {
@@ -371,6 +390,13 @@ html.tv-mode .delete-btn,
 html.tv-mode .report-btn {
     font-size: clamp(14px, 1.8vh, 24px);
     padding: clamp(12px, 1.5vh, 22px) clamp(16px, 1.6vw, 32px);
+}
+
+/* «Смотреть» на телевизоре показываем только когда фильм действительно
+   можно посмотреть. Неактивная кнопка здесь бесполезна: нажать её
+   нельзя, а фокус пультом она бы всё равно перехватывала. */
+html.tv-mode .watch-btn.is-disabled {
+    display: none;
 }
 
 html.tv-mode .poster-play-btn {

@@ -89,6 +89,7 @@
         { id: 'confirm', root: 'confirm-modal-overlay', closeWith: 'btn-confirm-cancel' },
         { id: 'about', root: 'about-modal-overlay', closeWith: 'btn-about-close' },
         { id: 'country', root: 'country-picker-overlay', closeWith: 'country-picker-close' },
+        { id: 'year', root: 'year-picker-overlay', closeWith: 'year-picker-close' },
         { id: 'popup', root: 'popup-overlay', closeWith: 'popup-close' },
         { id: 'settings', root: 'settings-overlay', closeWith: 'btn-settings-back' },
         { id: 'ai', root: 'ai-overlay', closeWith: 'btn-ai-back' },
@@ -252,6 +253,106 @@
             if (form && form.style.display === 'none') return false;
 
             return isVisible(el);
+        });
+    }
+
+    // ======================================================================
+    // Горизонтальные обложки
+    //
+    // На телевизоре вертикальный постер смотрится чужеродно: экран
+    // широкий, и привычнее широкая обложка — как в телевизионных
+    // кинотеатрах. У Кинопоиска такая обложка есть (coverUrl), но в ленте
+    // она не приходит — только в карточке фильма.
+    //
+    // Лишних запросов почти не делаем: детали фильмов приложение и так
+    // запрашивает (для избранного, поиска, страницы фильма) — мы просто
+    // запоминаем обложки из этих ответов. Догружаем сами только для
+    // карточек подбора, где деталей ещё нет.
+    // ======================================================================
+
+    const coverByMovieId = new Map();
+    const coverByPosterUrl = new Map();
+    const coverRequested = new Set();
+
+    function rememberCoversFrom(data) {
+        if (!data || typeof data !== 'object') return;
+
+        if (Array.isArray(data)) {
+            data.forEach(rememberCoversFrom);
+            return;
+        }
+        if (Array.isArray(data.items)) data.items.forEach(rememberCoversFrom);
+
+        const cover = data.coverUrl;
+        if (!cover) return;
+
+        const id = Number(data.kinopoiskId || data.filmId || data.id);
+        if (Number.isFinite(id)) coverByMovieId.set(id, cover);
+
+        [data.posterUrl, data.posterUrlPreview, data.poster, data.posterFull]
+            .forEach((poster) => {
+                if (poster) coverByPosterUrl.set(String(poster), cover);
+            });
+    }
+
+    /** Подсматриваем обложки в ответах, которые приложение и так получает. */
+    function watchApiResponses() {
+        const originalFetch = window.fetch;
+        if (typeof originalFetch !== 'function') return;
+
+        window.fetch = function (...args) {
+            const response = originalFetch.apply(this, args);
+            try {
+                const request = args[0];
+                const url = typeof request === 'string' ? request : (request && request.url) || '';
+                if (/\/api\/(movies|search)/.test(url)) {
+                    response.then((result) => {
+                        result.clone().json().then((data) => {
+                            rememberCoversFrom(data);
+                            applyWideCovers();
+                        }).catch(() => { /* не JSON — не наш случай */ });
+                    }).catch(() => { /* сетевая ошибка обработается приложением */ });
+                }
+            } catch (error) {
+                /* перехват не должен мешать приложению */
+            }
+            return response;
+        };
+    }
+
+    function requestCoverFor(movieId) {
+        if (!Number.isFinite(movieId) || coverRequested.has(movieId)) return;
+        coverRequested.add(movieId);
+
+        const base = window.location.hostname === 'appassets.androidplatform.net'
+            ? 'https://appassets.androidplatform.net/api-proxy'
+            : 'http://185.73.126.11:8000';
+
+        window.fetch(`${base}/api/movies/${movieId}`, { headers: { Accept: 'application/json' } })
+            .catch(() => { /* нет обложки — останется постер */ });
+    }
+
+    /** Подставляет широкую обложку в карточки, где она уже известна. */
+    function applyWideCovers() {
+        document.querySelectorAll('#card-stack .movie-card').forEach((card) => {
+            const movieId = Number(card.dataset.id);
+            const cover = coverByMovieId.get(movieId);
+            const background = card.querySelector('.card-bg');
+            if (!background) return;
+
+            if (!cover) {
+                requestCoverFor(movieId);
+                return;
+            }
+            if (card.dataset.tvCover === cover) return;
+
+            card.dataset.tvCover = cover;
+            background.style.backgroundImage = `url('${cover}')`;
+        });
+
+        document.querySelectorAll('.fav-card img').forEach((poster) => {
+            const cover = coverByPosterUrl.get(poster.getAttribute('src') || '');
+            if (cover && poster.src !== cover) poster.src = cover;
         });
     }
 
@@ -454,6 +555,95 @@
         return true;
     }
 
+    // ======================================================================
+    // Навигация по сеткам («Избранное», результаты поиска)
+    //
+    // Геометрический поиск здесь не годится: он выбирает ближайший к
+    // центру элемент, поэтому с вкладки фокус попадал в середину ряда, а
+    // при движении вверх перескакивал между шапкой и карточками. В сетке
+    // фокус должен ходить строго по рядам и колонкам.
+    // ======================================================================
+
+    function getGridColumns(grid) {
+        const template = window.getComputedStyle(grid).gridTemplateColumns;
+        const columns = template.split(' ').filter(Boolean).length;
+        return Math.max(1, columns);
+    }
+
+    function getGridItems(grid) {
+        return Array.prototype.slice
+            .call(grid.querySelectorAll('.fav-card, .reset-btn'))
+            .filter(isVisible);
+    }
+
+    /** Видимые сетки текущего экрана в порядке следования сверху вниз. */
+    function getVisibleGrids(fromGrid) {
+        const screen = fromGrid.closest('#screen-favorites, .search-body') || document;
+        return Array.prototype.slice
+            .call(screen.querySelectorAll('.favorites-grid'))
+            .filter((grid) => getGridItems(grid).length > 0);
+    }
+
+    function gridNeighbour(current, direction) {
+        const grid = current.closest('.favorites-grid');
+        if (!grid) return null;
+
+        const items = getGridItems(grid);
+        const index = items.indexOf(current);
+        if (index < 0) return null;
+
+        const columns = getGridColumns(grid);
+        const column = index % columns;
+
+        if (direction === 'left') return items[index - 1] || null;
+        if (direction === 'right') return items[index + 1] || null;
+
+        if (direction === 'down') {
+            const below = items[index + columns];
+            if (below) return below;
+
+            // Ниже в этой секции пусто — переходим к следующей.
+            const grids = getVisibleGrids(grid);
+            const nextGrid = grids[grids.indexOf(grid) + 1];
+            if (!nextGrid) return null;
+            const nextItems = getGridItems(nextGrid);
+            return nextItems[Math.min(column, nextItems.length - 1)] || nextItems[0] || null;
+        }
+
+        if (direction === 'up') {
+            const above = items[index - columns];
+            if (above) return above;
+
+            // Мы в верхнем ряду секции: идём в предыдущую, а если её нет —
+            // поднимаемся к вкладкам, а не в случайную кнопку шапки.
+            const grids = getVisibleGrids(grid);
+            const previousGrid = grids[grids.indexOf(grid) - 1];
+            if (previousGrid) {
+                const previousItems = getGridItems(previousGrid);
+                const previousColumns = getGridColumns(previousGrid);
+                const lastRowStart = Math.floor((previousItems.length - 1) / previousColumns) * previousColumns;
+                return previousItems[Math.min(lastRowStart + column, previousItems.length - 1)] || null;
+            }
+
+            const activeTab = document.querySelector('.tab-btn.active') || document.querySelector('.tab-btn');
+            return activeTab && isVisible(activeTab) ? activeTab : null;
+        }
+
+        return null;
+    }
+
+    /** Первая карточка первой непустой сетки — точка входа в списки. */
+    function firstCardOfLists() {
+        const screen = $id('screen-favorites');
+        if (!screen || !screen.classList.contains('active')) return null;
+        const grids = Array.prototype.slice.call(screen.querySelectorAll('.favorites-grid'));
+        for (const grid of grids) {
+            const items = getGridItems(grid);
+            if (items.length) return items[0];
+        }
+        return null;
+    }
+
     /**
      * Экран «Подбор» состоит из горизонтальных рядов: шапка → вкладки →
      * фильтры → карточка → кнопки действий. Вертикальные переходы между
@@ -461,6 +651,9 @@
      * к случайно оказавшемуся рядом элементу.
      */
     function preferredNeighbour(current, direction) {
+        // В сетках — своя, построчная навигация.
+        const inGrid = gridNeighbour(current, direction);
+        if (inGrid) return inGrid;
         const pick = (selector) => {
             const el = document.querySelector(selector);
             return el && isVisible(el) ? el : null;
@@ -480,7 +673,18 @@
             if (direction === 'down') return pick('#card-stack .movie-card');
         }
 
+        // Из шапки спускаемся на вкладки — следующий ряд по порядку,
+        // а не в середину списка, куда ведёт геометрия.
+        if (current.closest('.app-header') && direction === 'down') {
+            const tab = pick('.tab-btn.active') || pick('.tab-btn');
+            if (tab) return tab;
+        }
+
         if (current.classList.contains('tab-btn') && direction === 'down') {
+            // В «Избранном» — всегда первая карточка списка, а не та, что
+            // случайно оказалась под вкладкой.
+            const firstCard = firstCardOfLists();
+            if (firstCard) return firstCard;
             return pick('.mood-tag.active') || pick('.mood-tag') || pick('#card-stack .movie-card');
         }
 
@@ -804,6 +1008,7 @@
             window.requestAnimationFrame(() => {
                 scheduled = false;
                 ensureFocusAlive();
+                applyWideCovers();
             });
         });
 
@@ -880,6 +1085,10 @@
         // Первый фокус ставим, когда приложение отрисовало стартовый экран.
         window.setTimeout(() => focusLayerEntry(getActiveLayer()), 300);
     }
+
+    // Обложки перехватываем сразу: приложение начинает запрашивать данные
+    // раньше, чем построит страницу, и первые ответы упускать нельзя.
+    watchApiResponses();
 
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', start);

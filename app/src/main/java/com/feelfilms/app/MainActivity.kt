@@ -383,7 +383,18 @@ class MainActivity : AppCompatActivity() {
         val root = (content as? ViewGroup)?.getChildAt(0) ?: return
         ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
             // Let WebView occupy full window to avoid top seam above overlays.
-            view.setPadding(0, 0, 0, 0)
+            //
+            // Исключение — экранная клавиатура на телевизоре. Окно там
+            // полноэкранное и само под клавиатуру не подстраивается, из-за
+            // чего поле ввода (поиск, чат с ИИ) остаётся под ней. Поджимаем
+            // содержимое снизу на высоту клавиатуры: дальше сработает
+            // уже существующая подстройка оверлеев под видимую область.
+            val keyboardHeight = if (isTvDevice) {
+                insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
+            } else {
+                0
+            }
+            view.setPadding(0, 0, 0, keyboardHeight)
             insets
         }
         ViewCompat.requestApplyInsets(root)
@@ -466,6 +477,12 @@ class MainActivity : AppCompatActivity() {
             if (scheme != "http" && scheme != "https") return
 
             runOnUiThread {
+                // Кнопка «Смотреть» ведёт на страницу фильма Кинопоиска.
+                // Если приложение Кинопоиска установлено — открываем фильм
+                // сразу в нём, и на телевизоре, и на телефоне. Сайт
+                // остаётся запасным вариантом.
+                if (openMovieInKinopoiskApp(uri)) return@runOnUiThread
+
                 val intent = Intent(Intent.ACTION_VIEW, uri).apply {
                     addCategory(Intent.CATEGORY_BROWSABLE)
                 }
@@ -531,6 +548,58 @@ class MainActivity : AppCompatActivity() {
                 }.onFailure { error -> Log.w(TAG, "Center tap failed", error) }
             }
         }
+    }
+
+    /**
+     * Открывает фильм в установленном приложении Кинопоиск.
+     *
+     * Порядок попыток: сначала та же https-ссылка, но адресованная
+     * приложению Кинопоиска (а не браузеру), затем фирменная схема
+     * kinopoisk://film/{id}. Если приложения нет — возвращаем false,
+     * и ссылка открывается обычным способом.
+     *
+     * @return true, если фильм удалось передать приложению.
+     */
+    private fun openMovieInKinopoiskApp(uri: Uri): Boolean {
+        val filmId = Regex("/film/(\\d+)").find(uri.path.orEmpty())?.groupValues?.getOrNull(1)
+        if (uri.host?.contains("kinopoisk", ignoreCase = true) != true) return false
+
+        val webIntent = Intent(Intent.ACTION_VIEW, uri)
+        val handlers = runCatching {
+            packageManager.queryIntentActivities(webIntent, PackageManager.MATCH_ALL)
+        }.getOrDefault(emptyList())
+
+        // Среди тех, кто умеет открывать ссылку, ищем сам Кинопоиск,
+        // а не браузер.
+        val kinopoiskPackage = handlers
+            .map { it.activityInfo.packageName }
+            .firstOrNull { it.contains("kinopoisk", ignoreCase = true) }
+
+        if (kinopoiskPackage != null) {
+            val appIntent = Intent(Intent.ACTION_VIEW, uri).setPackage(kinopoiskPackage)
+            val launched = runCatching { startActivity(appIntent); true }.getOrDefault(false)
+            if (launched) {
+                Log.d(TAG, "Movie opened in Kinopoisk app ($kinopoiskPackage)")
+                return true
+            }
+        }
+
+        if (filmId != null) {
+            val deepLink = Intent(Intent.ACTION_VIEW, Uri.parse("kinopoisk://film/$filmId"))
+            val canHandle = runCatching {
+                packageManager.queryIntentActivities(deepLink, PackageManager.MATCH_ALL).isNotEmpty()
+            }.getOrDefault(false)
+            if (canHandle) {
+                val launched = runCatching { startActivity(deepLink); true }.getOrDefault(false)
+                if (launched) {
+                    Log.d(TAG, "Movie opened via kinopoisk://film/$filmId")
+                    return true
+                }
+            }
+        }
+
+        Log.d(TAG, "Kinopoisk app not found — falling back to the website")
+        return false
     }
 
     /**

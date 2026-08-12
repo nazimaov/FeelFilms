@@ -17,6 +17,23 @@
         android:name="android.hardware.faketouch"
         android:required="false" />
 
+    <!-- Начиная с Android 11 приложение по умолчанию не видит другие
+         приложения. Без этого блока не найти установленный Кинопоиск,
+         чтобы открыть фильм прямо в нём. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="kinopoisk" />
+        </intent>
+        <package android:name="ru.kinopoisk" />
+        <package android:name="ru.kinopoisk.tv" />
+        <package android:name="com.yandex.tv.home" />
+    </queries>
+
     <application
         android:allowBackup="true"
         android:banner="@drawable/tv_banner"

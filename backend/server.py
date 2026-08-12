@@ -268,6 +268,40 @@ def health() -> dict:
     }
 
 
+def _filter_by_country_and_year(items: list, country: str, year: int) -> list:
+    """Отбор по стране и году для ответов живого источника.
+
+    Каталог фильтрует сам (см. CatalogService.get_movies); эта функция нужна
+    только на случай отката на Kinopoisk, который таких параметров не знает.
+    """
+    wanted_country = (country or "").strip().lower()
+    wanted_year = year if isinstance(year, int) and year > 0 else 0
+    if not wanted_country and not wanted_year:
+        return items
+
+    def suits(movie: dict) -> bool:
+        if wanted_country:
+            names = {
+                (c.get("country") or "").strip().lower()
+                for c in (movie.get("countries") or [])
+                if isinstance(c, dict)
+            }
+            if not any(
+                wanted_country in name or name in wanted_country for name in names if name
+            ):
+                return False
+        if wanted_year:
+            try:
+                movie_year = int(str(movie.get("year"))[:4])
+            except (TypeError, ValueError):
+                return False
+            if movie_year != wanted_year:
+                return False
+        return True
+
+    return [movie for movie in items if suits(movie)]
+
+
 @app.get("/api/movies")
 def get_movies(
     mood: str = Query("all"),
@@ -275,14 +309,18 @@ def get_movies(
     content_type: str = Query("ALL"),
     page: int = Query(DEFAULT_PAGE, ge=1, le=MAX_PAGE),
     limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
+    country: str = Query("", max_length=64),
+    year: int = Query(0, ge=0, le=2100),
 ) -> dict:
     logger.info(
-        "GET /api/movies mood=%s categories=%s content_type=%s page=%s limit=%s",
+        "GET /api/movies mood=%s categories=%s content_type=%s page=%s limit=%s country=%r year=%s",
         mood,
         categories,
         content_type,
         page,
         limit,
+        country,
+        year,
     )
     # Приоритет — локальный каталог (не тратит лимит Kinopoisk). Если каталог
     # не покрывает запрос (нет таких фильмов) — откат на живой источник.
@@ -294,6 +332,8 @@ def get_movies(
                 content_type=content_type,
                 page=page,
                 limit=limit,
+                country=country,
+                year=year,
             )
             if result.get("catalog_total", 0) > 0:
                 result["items"] = overrides_service.apply_to_list(result.get("items", []))
@@ -310,7 +350,12 @@ def get_movies(
             page=page,
             limit=limit,
         )
-        response["items"] = overrides_service.apply_to_list(response.get("items", []))
+        # Живой источник не умеет фильтровать по стране и году, поэтому
+        # отбираем сами — иначе при откате в ленту попали бы фильмы,
+        # не подходящие под выбранный фильтр.
+        items = _filter_by_country_and_year(response.get("items", []), country, year)
+        response["items"] = overrides_service.apply_to_list(items)
+        response["total"] = len(response["items"])
         return response
     except UpstreamServiceError:
         raise

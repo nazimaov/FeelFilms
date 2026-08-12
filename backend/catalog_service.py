@@ -125,6 +125,22 @@ class CatalogService:
             genres.append(mood_genre)
         return list(dict.fromkeys(genres))  # уникальные, сохраняя порядок
 
+    @staticmethod
+    def _movie_countries(movie: dict) -> set:
+        """Названия стран фильма в нижнем регистре."""
+        return {
+            (c.get("country") or "").strip().lower()
+            for c in (movie.get("countries") or [])
+            if isinstance(c, dict)
+        }
+
+    @staticmethod
+    def _movie_year(movie: dict):
+        try:
+            return int(str(movie.get("year"))[:4])
+        except (TypeError, ValueError):
+            return None
+
     def get_movies(
         self,
         *,
@@ -133,6 +149,8 @@ class CatalogService:
         content_type: str,
         page: int,
         limit: int,
+        country: str = "",
+        year: int = 0,
     ) -> dict:
         self._reload_if_changed()
         items = self._items
@@ -142,6 +160,8 @@ class CatalogService:
         want_series = "series" in cats
 
         target_genres = self._target_genres(categories, mood)
+        wanted_country = (country or "").strip().lower()
+        wanted_year = year if isinstance(year, int) and year > 0 else 0
 
         def matches(movie: dict) -> bool:
             mtype = movie.get("type", "FILM")
@@ -156,6 +176,20 @@ class CatalogService:
                     if isinstance(g, dict)
                 }
                 if not any(t.lower() in names for t in target_genres):
+                    return False
+            # Страна и год отбираются здесь, по всему каталогу. Раньше это
+            # делалось уже в приложении — по присланной странице, из-за чего
+            # при узком выборе лента почти сразу заканчивалась.
+            if wanted_country:
+                countries = self._movie_countries(movie)
+                if not any(
+                    wanted_country in name or name in wanted_country
+                    for name in countries
+                    if name
+                ):
+                    return False
+            if wanted_year:
+                if self._movie_year(movie) != wanted_year:
                     return False
             return True
 

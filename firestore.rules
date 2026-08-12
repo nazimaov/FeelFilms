@@ -1,0 +1,37 @@
+// FeelFilm — правила безопасности Firestore
+// Как вставить: Firebase Console → Firestore Database → Rules → вставить → Publish.
+// Единственный админ (whitelist) должен совпадать со списком в admin/admin.js.
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Админ определяется по email в токене Firebase Auth.
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.email in ['nazimaov2@gmail.com'];
+    }
+
+    // users/{uid} — данные пользователя (избранное, метаданные).
+    // Читать/писать своё может только сам владелец. Админ читает всех.
+    match /users/{uid} {
+      allow read: if request.auth != null && (request.auth.uid == uid || isAdmin());
+      allow write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // bug_reports — отчёты об ошибках. Любой залогиненный может создать
+    // (только со СВОИМ userUid), чужие сообщения читать/менять не может.
+    // Админ видит и меняет статус любого сообщения.
+    match /bug_reports/{id} {
+      allow read: if isAdmin();
+      allow create: if request.auth != null
+        && request.resource.data.userUid == request.auth.uid
+        && request.resource.data.reason is string
+        && request.resource.data.reason.size() <= 40
+        && (request.resource.data.comment == null
+            || (request.resource.data.comment is string
+                && request.resource.data.comment.size() <= 1000));
+      allow update, delete: if isAdmin();
+    }
+  }
+}

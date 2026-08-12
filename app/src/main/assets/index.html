@@ -183,6 +183,13 @@
                     </svg>
                     Профиль и настройки
                 </button>
+                <button type="button" class="user-menu-item user-menu-item-admin" id="btn-admin-panel" style="display:none;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                        <polyline points="9 12 11 14 15 10" />
+                    </svg>
+                    Админ-панель
+                </button>
                 <button type="button" class="user-menu-item" id="btn-logout">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
@@ -515,10 +522,65 @@
                                 </svg>
                                 Удалить из избранного
                             </button>
+                            <button type="button" class="report-btn" id="popup-report" aria-label="Сообщить об ошибке">
+                                <svg class="report-flag" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M4 21V4a1 1 0 0 1 1-1h11l-2 4 2 4H5" />
+                                    <line x1="4" y1="21" x2="4" y2="14" />
+                                </svg>
+                                Сообщить об ошибке
+                            </button>
                         </div>
                     </div>
                 </div>
             </div>
+
+            <!-- ===== BUG REPORT MODAL ===== -->
+            <div class="settings-modal-overlay" id="bug-modal-overlay">
+                <section class="settings-modal bug-modal">
+                    <button type="button" class="settings-modal-close" id="btn-bug-close" aria-label="Закрыть">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4">
+                            <line x1="18" y1="6" x2="6" y2="18" />
+                            <line x1="6" y1="6" x2="18" y2="18" />
+                        </svg>
+                    </button>
+                    <h3>Сообщить об ошибке</h3>
+                    <p class="settings-modal-description" id="bug-modal-movie"></p>
+                    <div class="bug-reasons">
+                        <label class="bug-reason">
+                            <input type="radio" name="bug-reason" value="wrong_trailer">
+                            <span>Неверный трейлер</span>
+                        </label>
+                        <label class="bug-reason">
+                            <input type="radio" name="bug-reason" value="trailer_not_playing">
+                            <span>Трейлер не воспроизводится</span>
+                        </label>
+                        <label class="bug-reason">
+                            <input type="radio" name="bug-reason" value="wrong_description">
+                            <span>Неверное описание</span>
+                        </label>
+                        <label class="bug-reason">
+                            <input type="radio" name="bug-reason" value="wrong_poster">
+                            <span>Неправильный постер</span>
+                        </label>
+                        <label class="bug-reason">
+                            <input type="radio" name="bug-reason" value="wrong_data">
+                            <span>Ошибка в информации (год, жанр, рейтинг)</span>
+                        </label>
+                        <label class="bug-reason">
+                            <input type="radio" name="bug-reason" value="other">
+                            <span>Другое</span>
+                        </label>
+                    </div>
+                    <textarea id="bug-comment" rows="3" maxlength="1000"
+                        placeholder="Опишите проблему (необязательно)"></textarea>
+                    <div class="bug-status" id="bug-status" role="status" aria-live="polite"></div>
+                    <div class="confirm-modal-actions">
+                        <button type="button" class="confirm-modal-btn" id="btn-bug-cancel">Отмена</button>
+                        <button type="button" class="confirm-modal-btn danger" id="btn-bug-send">Отправить</button>
+                    </div>
+                </section>
+            </div>
+
             <!-- ===== TRAILER PLAYER MODAL ===== -->
             <div class="trailer-overlay" id="trailer-overlay">
                 <div class="trailer-modal" id="trailer-modal">

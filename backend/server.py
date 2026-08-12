@@ -9,17 +9,22 @@ from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 try:
     from backend.kinopoisk_service import KinopoiskConfig, KinopoiskService, UpstreamServiceError
     from backend.catalog_service import CatalogService
     from backend.ai_service import build_ai_assistant
+    from backend.overrides_service import OverridesService, ALLOWED_FIELDS
+    from backend.admin_auth import require_admin
 except Exception:
     from kinopoisk_service import KinopoiskConfig, KinopoiskService, UpstreamServiceError
     from catalog_service import CatalogService
     from ai_service import build_ai_assistant
+    from overrides_service import OverridesService, ALLOWED_FIELDS
+    from admin_auth import require_admin
 
 load_dotenv(encoding="utf-8-sig")
 
@@ -144,6 +149,10 @@ catalog_service = CatalogService(CATALOG_PATH)
 # ИИ-ассистент поиска фильмов (провайдер задаётся окружением, по умолчанию Groq).
 ai_assistant = build_ai_assistant()
 
+# Ручные правки данных фильмов (админ-панель).
+OVERRIDES_PATH = Path(os.getenv("OVERRIDES_PATH", str(Path(__file__).parent / "overrides.json")))
+overrides_service = OverridesService(OVERRIDES_PATH)
+
 app = FastAPI(title="FeelFilms API", version="3.0.0")
 
 app.add_middleware(
@@ -195,6 +204,19 @@ def root() -> dict:
         "docs": "/docs",
         "health": "/health",
     }
+
+
+# ------------------------------------------------------------------
+# Админ-панель (статическая веб-страница). Открывается по /admin/.
+# Доступ ограничен на клиенте: логин через Firebase Auth + whitelist email
+# в admin.js. Роут просто отдаёт HTML/CSS/JS.
+# ------------------------------------------------------------------
+ADMIN_DIR = Path(os.getenv("ADMIN_DIR", str(Path(__file__).parent.parent / "admin")))
+if ADMIN_DIR.exists():
+    app.mount("/admin", StaticFiles(directory=str(ADMIN_DIR), html=True), name="admin")
+    logger.info("Admin panel served from %s", ADMIN_DIR)
+else:
+    logger.warning("Admin panel directory not found: %s", ADMIN_DIR)
 
 
 DEFAULT_APP_CONFIG: dict = {
@@ -274,19 +296,22 @@ def get_movies(
                 limit=limit,
             )
             if result.get("catalog_total", 0) > 0:
+                result["items"] = overrides_service.apply_to_list(result.get("items", []))
                 return result
             logger.info("Каталог не покрыл запрос — откат на живой источник.")
         except Exception as exc:  # noqa: BLE001 — при сбое каталога не роняем ленту
             logger.warning("Ошибка отдачи из каталога, откат на живой источник: %s", exc)
 
     try:
-        return movie_service.get_movies(
+        response = movie_service.get_movies(
             mood=mood,
             categories=categories,
             content_type=content_type,
             page=page,
             limit=limit,
         )
+        response["items"] = overrides_service.apply_to_list(response.get("items", []))
+        return response
     except UpstreamServiceError:
         raise
     except Exception as exc:
@@ -309,13 +334,16 @@ def search_movies(
         try:
             result = catalog_service.search(q, limit=limit)
             if result.get("total", 0) > 0:
+                result["items"] = overrides_service.apply_to_list(result.get("items", []))
                 return result
         except Exception as exc:  # noqa: BLE001 — при сбое каталога пробуем живой источник
             logger.warning("Ошибка поиска по каталогу, откат на Kinopoisk: %s", exc)
 
     # Каталог не покрыл запрос — ищем через Kinopoisk (результат кэшируется).
     try:
-        return movie_service.search_movies(q, limit=limit)
+        response = movie_service.search_movies(q, limit=limit)
+        response["items"] = overrides_service.apply_to_list(response.get("items", []))
+        return response
     except UpstreamServiceError:
         raise
     except Exception as exc:  # noqa: BLE001
@@ -327,7 +355,8 @@ def search_movies(
 def get_movie_details(film_id: int) -> dict:
     logger.info("GET /api/movies/%s", film_id)
     try:
-        return movie_service.get_movie_details(film_id)
+        details = movie_service.get_movie_details(film_id)
+        return overrides_service.apply_to_movie(details)
     except UpstreamServiceError:
         raise
     except Exception as exc:
@@ -351,6 +380,20 @@ def get_movie_similars(film_id: int) -> dict:
 @app.get("/api/movies/{film_id}/videos")
 def get_movie_videos(film_id: int) -> dict:
     logger.info("GET /api/movies/%s/videos", film_id)
+    # Ручная подмена трейлера (админка): если у фильма проставлен trailerUrl,
+    # он полностью заменяет обычный ответ — сначала показываем override, всё
+    # остальное игнорируем, чтобы гарантировать нужное видео.
+    override_url = overrides_service.get_trailer_url(film_id)
+    if override_url:
+        site = "KINOPOISK_WIDGET" if "widgets.kinopoisk.ru" in override_url else (
+            "RUTUBE" if "rutube.ru" in override_url else "OVERRIDE"
+        )
+        override_item = {
+            "url": override_url,
+            "name": overrides_service.get(film_id).get("trailerName") or "Трейлер",
+            "site": site,
+        }
+        return {"source": "override", "total": 1, "items": [override_item]}
     try:
         items = movie_service.get_movie_videos(film_id)
         return {"source": "kinopoisk", "total": len(items), "items": items}
@@ -521,6 +564,90 @@ def post_ai_assistant(payload: AIAssistantRequest) -> dict:
         "need_more_info": result.get("need_more_info", False),
         "movies": resolved,
     }
+
+
+# ------------------------------------------------------------------
+# Админ-панель: редактирование фильмов (overrides) + история
+# ------------------------------------------------------------------
+
+from fastapi import Depends
+
+
+class AdminMovieUpdate(BaseModel):
+    fields: dict = Field(default_factory=dict)
+
+
+def _get_movie_snapshot(film_id: int) -> Optional[dict]:
+    """Достаёт «сырой» фильм: сначала из каталога, потом из Kinopoisk."""
+    if catalog_service.available:
+        movie = catalog_service.get_movie(film_id)
+        if movie:
+            return movie
+    try:
+        return movie_service.get_movie_details(film_id)
+    except UpstreamServiceError:
+        return None
+    except Exception:
+        return None
+
+
+@app.get("/api/admin/movie/{film_id}")
+def admin_get_movie(film_id: int, admin: str = Depends(require_admin)) -> dict:
+    logger.info("ADMIN %s GET /api/admin/movie/%s", admin, film_id)
+    original = _get_movie_snapshot(film_id) or {"kinopoiskId": film_id}
+    override = overrides_service.get(film_id)
+    trailer_override = overrides_service.get_trailer_url(film_id)
+    return {
+        "movieId": film_id,
+        "original": original,
+        "override": override,
+        "trailerOverride": trailer_override,
+        "allowedFields": sorted(ALLOWED_FIELDS),
+    }
+
+
+@app.put("/api/admin/movie/{film_id}")
+def admin_update_movie(film_id: int, payload: AdminMovieUpdate,
+                       admin: str = Depends(require_admin)) -> dict:
+    logger.info("ADMIN %s PUT /api/admin/movie/%s fields=%s", admin, film_id, list(payload.fields.keys()))
+    snapshot = _get_movie_snapshot(film_id)
+    new_state = overrides_service.update(
+        film_id, payload.fields, admin_email=admin, snapshot=snapshot
+    )
+    return {"movieId": film_id, "override": new_state}
+
+
+@app.delete("/api/admin/movie/{film_id}/overrides")
+def admin_clear_overrides(film_id: int, admin: str = Depends(require_admin)) -> dict:
+    logger.info("ADMIN %s DELETE overrides for %s", admin, film_id)
+    overrides_service.clear(film_id, admin_email=admin)
+    return {"movieId": film_id, "override": {}}
+
+
+@app.get("/api/admin/movie/{film_id}/history")
+def admin_movie_history(film_id: int, admin: str = Depends(require_admin)) -> dict:
+    items = overrides_service.history_for(film_id, limit=50)
+    return {"movieId": film_id, "total": len(items), "items": items}
+
+
+class AdminRevertRequest(BaseModel):
+    versionId: str
+
+
+@app.post("/api/admin/movie/{film_id}/revert")
+def admin_revert(film_id: int, payload: AdminRevertRequest,
+                 admin: str = Depends(require_admin)) -> dict:
+    logger.info("ADMIN %s revert %s -> %s", admin, film_id, payload.versionId)
+    state = overrides_service.revert_to(film_id, payload.versionId, admin_email=admin)
+    if state is None:
+        raise HTTPException(status_code=404, detail="Version not found")
+    return {"movieId": film_id, "override": state}
+
+
+@app.get("/api/admin/overrides")
+def admin_list_overrides(admin: str = Depends(require_admin)) -> dict:
+    data = overrides_service.all()
+    return {"total": len(data), "items": data}
 
 
 if __name__ == "__main__":

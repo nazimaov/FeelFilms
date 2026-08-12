@@ -1,11 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="#0D0F14"
+    android:orientation="vertical">
 
     <WebView
         android:id="@+id/webView"
         android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+        android:layout_height="0dp"
+        android:layout_weight="1" />
 
-</FrameLayout>
+    <FrameLayout
+        android:id="@+id/adBannerPlaceholder"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="#0D0F14"
+        android:foregroundGravity="center"
+        android:visibility="gone" />
+
+</LinearLayout>

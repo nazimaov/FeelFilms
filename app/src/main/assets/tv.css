@@ -1,0 +1,601 @@
+/* ==========================================================================
+   FeelFilm — Android TV: адаптация раскладки под большой экран
+
+   Файл подключается только на телевизоре (tv.js добавляет класс .tv-mode).
+   Здесь нет ни одного нового цвета, шрифта или скругления — используются
+   те же дизайн-токены, что и в styles.css. Меняются только размеры,
+   расположение и появляется подсветка фокуса для управления пультом.
+
+   Размеры заданы через clamp() с единицами vh/vw, поэтому раскладка
+   одинаково корректна и на 1080p, и на 4K, независимо от того, какую
+   плотность пикселей сообщает WebView телевизора.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Базовое: безопасная зона (overscan) и крупный текст
+   -------------------------------------------------------------------------- */
+
+html.tv-mode,
+html.tv-mode body {
+    /* На телевизоре нечем прокручивать страницу — только фокусом. */
+    overflow: hidden;
+    font-size: clamp(16px, 1.7vh, 26px);
+}
+
+html.tv-mode #app,
+html.tv-mode #main-app {
+    /* Мобильная вёрстка держит приложение в колонке 480px по центру.
+       На телевизоре это дало бы узкую полоску посреди экрана, поэтому
+       ограничение снимаем — композиция экранов остаётся прежней,
+       просто получает всю доступную ширину. */
+    max-width: none;
+}
+
+html.tv-mode #app {
+    /* Часть телевизоров обрезает края кадра — держим интерфейс внутри.
+       По вертикали отступ скромнее: место нужнее карточке фильма. */
+    padding: clamp(6px, 1.2vh, 28px) clamp(20px, 2.2vw, 56px);
+}
+
+html.tv-mode .app-announcement {
+    max-width: clamp(480px, 60vw, 1100px);
+}
+
+/* Курсор на телевизоре не нужен: управление только пультом. */
+html.tv-mode * {
+    cursor: default !important;
+}
+
+/* --------------------------------------------------------------------------
+   Подсветка фокуса — в стиле существующего :hover FeelFilm
+   -------------------------------------------------------------------------- */
+
+html.tv-mode :focus {
+    outline: none;
+}
+
+html.tv-mode .tv-focused {
+    outline: none;
+}
+
+/* Подсветка не должна уходить под соседей — приподнимаем элемент над
+   потоком. Только те элементы, что стоят в потоке: задавать position
+   всем подряд нельзя, иначе «поедут» кнопки, спозиционированные
+   абсолютно (крестик трейлера, кнопка трейлера на постере). */
+html.tv-mode .fav-card.tv-focused,
+html.tv-mode .mood-tag.tv-focused,
+html.tv-mode .action-btn.tv-focused,
+html.tv-mode .tab-btn.tv-focused,
+html.tv-mode .country-item.tv-focused,
+html.tv-mode .settings-item-btn.tv-focused,
+html.tv-mode .user-menu-item.tv-focused,
+html.tv-mode .status-btn.tv-focused,
+html.tv-mode .delete-btn.tv-focused,
+html.tv-mode .report-btn.tv-focused,
+html.tv-mode .confirm-modal-btn.tv-focused {
+    position: relative;
+    z-index: 5;
+}
+
+/* Кнопки, теги, пункты списков */
+html.tv-mode button.tv-focused,
+html.tv-mode .mood-tag.tv-focused,
+html.tv-mode .country-item.tv-focused,
+html.tv-mode a.tv-focused {
+    color: var(--text-primary);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+    transform: scale(1.06);
+}
+
+/* Круглые кнопки действий сохраняют свой цвет, меняется только подсветка */
+html.tv-mode .action-btn.tv-focused {
+    transform: scale(1.14);
+    box-shadow: 0 0 0 4px var(--accent-glow), 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+/* Вкладки «Подбор» / «Избранное» */
+html.tv-mode .tab-btn.tv-focused {
+    background: rgba(233, 69, 96, 0.16);
+    color: var(--text-primary);
+    transform: scale(1.04);
+}
+
+/* Карточки — тот же приём, что и в мобильном :hover, только заметнее */
+html.tv-mode .fav-card.tv-focused {
+    transform: translateY(-6px) scale(1.07);
+    border-color: var(--accent);
+    box-shadow: 0 18px 44px rgba(0, 0, 0, 0.55), 0 0 0 3px var(--accent-glow);
+}
+
+html.tv-mode .movie-card.tv-focused {
+    box-shadow: var(--shadow-card), 0 0 0 4px var(--accent-glow);
+}
+
+/* Поля ввода */
+html.tv-mode input.tv-focused,
+html.tv-mode textarea.tv-focused {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+html.tv-mode .input-group:focus-within,
+html.tv-mode .search-input-wrap:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+    border-radius: var(--radius-md);
+}
+
+/* Радио-кнопки в форме «Сообщить об ошибке» */
+html.tv-mode .bug-reason:focus-within,
+html.tv-mode input[type="radio"].tv-focused + span {
+    color: var(--text-primary);
+}
+
+html.tv-mode input[type="radio"].tv-focused {
+    box-shadow: 0 0 0 4px var(--accent-glow);
+    border-radius: 50%;
+}
+
+/* --------------------------------------------------------------------------
+   Шапка и вкладки
+   -------------------------------------------------------------------------- */
+
+/* Служебные ряды (шапка, вкладки, фильтры, кнопки) намеренно компактные:
+   всё освободившееся по высоте место достаётся карточке фильма, ради
+   которой экран и существует. Размеры самих надписей и иконок при этом
+   остаются крупными — сокращаются только отступы. */
+html.tv-mode .app-header {
+    padding: clamp(4px, 1vh, 18px) clamp(8px, 1vw, 20px) clamp(2px, 0.5vh, 10px);
+}
+
+html.tv-mode .logo-icon {
+    font-size: clamp(28px, 3.4vh, 52px);
+}
+
+html.tv-mode .logo h1 {
+    font-size: clamp(26px, 3.4vh, 50px);
+}
+
+html.tv-mode .ai-btn img {
+    width: clamp(34px, 4.2vh, 64px);
+    height: clamp(34px, 4.2vh, 64px);
+}
+
+html.tv-mode .tab-nav {
+    gap: clamp(8px, 1vw, 20px);
+    padding: clamp(2px, 0.4vh, 8px) clamp(8px, 1vw, 20px) clamp(4px, 0.8vh, 16px);
+    max-width: clamp(600px, 55vw, 1200px);
+    margin: 0 auto;
+}
+
+html.tv-mode .tab-btn {
+    font-size: clamp(14px, 1.9vh, 28px);
+    padding: clamp(6px, 1vh, 18px) 0;
+    gap: clamp(6px, 0.6vw, 14px);
+}
+
+html.tv-mode .tab-btn svg {
+    width: clamp(22px, 2.6vh, 38px);
+    height: clamp(22px, 2.6vh, 38px);
+}
+
+/* --------------------------------------------------------------------------
+   Фильтры настроения
+   -------------------------------------------------------------------------- */
+
+html.tv-mode .mood-filters {
+    gap: clamp(8px, 0.8vw, 18px);
+    padding: 0 clamp(8px, 1vw, 20px) clamp(6px, 1vh, 18px);
+    justify-content: flex-start;
+}
+
+html.tv-mode .mood-tag {
+    font-size: clamp(13px, 1.7vh, 24px);
+    padding: clamp(7px, 1vh, 16px) clamp(16px, 1.6vw, 34px);
+}
+
+/* --------------------------------------------------------------------------
+   Экран «Подбор» — карточка крупнее, композиция прежняя
+   -------------------------------------------------------------------------- */
+
+html.tv-mode #screen-discover,
+html.tv-mode .card-stack {
+    /* Без min-height:0 flex-контейнер отказывается сжиматься, и ряд кнопок
+       действий уезжает за нижнюю границу экрана. */
+    min-height: 0;
+}
+
+html.tv-mode .card-stack {
+    padding: 0 clamp(20px, 2vw, 48px);
+}
+
+html.tv-mode .movie-card {
+    /* Карточка занимает всё место, которое осталось между фильтрами и
+       кнопками действий, а ширина считается по прежнему соотношению 2/3.
+       Привязка к контейнеру (а не к vh) гарантирует, что на любом
+       телевизоре — 1080p, 4K или нестандартной приставке — на экран
+       поместится и карточка, и весь ряд кнопок. */
+    width: auto;
+    height: 100%;
+    max-height: 100%;
+    max-width: min(90vw, 52vh);
+    aspect-ratio: 2/3;
+    /* Перетаскивание мышью на телевизоре недоступно — это нормально:
+       те же действия выполняются стрелками пульта и кнопками ниже. */
+    touch-action: auto;
+}
+
+html.tv-mode .movie-card .card-title {
+    font-size: clamp(22px, 3vh, 44px);
+}
+
+html.tv-mode .movie-card .card-meta {
+    font-size: clamp(13px, 1.7vh, 24px);
+}
+
+html.tv-mode .movie-card .card-genres {
+    font-size: clamp(12px, 1.6vh, 22px);
+}
+
+html.tv-mode .movie-card .card-desc {
+    font-size: clamp(12px, 1.6vh, 22px);
+    -webkit-line-clamp: 3;
+}
+
+html.tv-mode .swipe-stamp {
+    font-size: clamp(48px, 7vh, 110px);
+}
+
+/* Ряд действий: «Пропустить», «Нравится», «Хочу посмотреть», «Уже посмотрел» */
+html.tv-mode .swipe-actions {
+    gap: clamp(16px, 1.8vw, 40px);
+    padding: clamp(8px, 1.2vh, 22px) clamp(16px, 1.6vw, 32px) clamp(8px, 1.2vh, 24px);
+}
+
+html.tv-mode .action-btn {
+    width: clamp(54px, 7.4vh, 112px);
+    height: clamp(54px, 7.4vh, 112px);
+}
+
+html.tv-mode .action-btn svg {
+    width: clamp(28px, 3.7vh, 56px);
+    height: clamp(28px, 3.7vh, 56px);
+}
+
+/* --------------------------------------------------------------------------
+   Избранное и результаты поиска — та же карточка, больше колонок
+   -------------------------------------------------------------------------- */
+
+html.tv-mode .favorites-sections {
+    gap: clamp(18px, 2.4vh, 44px);
+    padding: clamp(10px, 1.2vh, 22px) clamp(8px, 1vw, 24px) clamp(60px, 8vh, 140px);
+}
+
+html.tv-mode .favorites-section-title {
+    font-size: clamp(14px, 1.9vh, 26px);
+    margin-bottom: clamp(10px, 1.2vh, 20px);
+}
+
+html.tv-mode .favorites-grid {
+    grid-template-columns: repeat(5, 1fr);
+    gap: clamp(14px, 1.4vw, 32px);
+}
+
+@media (min-width: 1600px) {
+    html.tv-mode .favorites-grid {
+        grid-template-columns: repeat(6, 1fr);
+    }
+}
+
+html.tv-mode .fav-card .fav-title {
+    font-size: clamp(13px, 1.7vh, 24px);
+}
+
+html.tv-mode .fav-card .fav-rating,
+html.tv-mode .fav-card .fav-genres {
+    font-size: clamp(11px, 1.4vh, 20px);
+}
+
+html.tv-mode .empty-state h2,
+html.tv-mode .empty-favorites h2 {
+    font-size: clamp(20px, 2.8vh, 40px);
+}
+
+html.tv-mode .empty-state p,
+html.tv-mode .empty-favorites p {
+    font-size: clamp(14px, 1.8vh, 24px);
+    max-width: 60vw;
+}
+
+html.tv-mode .empty-icon {
+    font-size: clamp(48px, 7vh, 110px);
+}
+
+html.tv-mode .reset-btn {
+    font-size: clamp(14px, 1.8vh, 24px);
+    padding: clamp(12px, 1.5vh, 22px) clamp(24px, 2.4vw, 48px);
+}
+
+/* --------------------------------------------------------------------------
+   Страница фильма: на телевизоре — по центру экрана
+   -------------------------------------------------------------------------- */
+
+html.tv-mode .popup-overlay {
+    align-items: center;
+}
+
+html.tv-mode .popup {
+    max-width: clamp(700px, 62vw, 1400px);
+    max-height: 88vh;
+    /* Лист снизу превращается в карточку по центру: то же скругление
+       FeelFilm, но со всех четырёх сторон. */
+    border-radius: var(--radius-xl);
+    transform: translateY(40px) scale(0.98);
+}
+
+html.tv-mode .popup-overlay.active .popup {
+    transform: translateY(0) scale(1);
+}
+
+html.tv-mode .popup-poster {
+    aspect-ratio: 21/9;
+}
+
+html.tv-mode .popup-content {
+    padding: 0 clamp(28px, 3vw, 64px) clamp(32px, 4vh, 64px);
+}
+
+html.tv-mode .popup-title {
+    font-size: clamp(24px, 3.4vh, 52px);
+}
+
+html.tv-mode .popup-meta span {
+    font-size: clamp(12px, 1.6vh, 22px);
+    padding: clamp(5px, 0.7vh, 12px) clamp(12px, 1.2vw, 24px);
+}
+
+html.tv-mode .popup-description {
+    font-size: clamp(14px, 1.9vh, 26px);
+    line-height: 1.6;
+}
+
+html.tv-mode .popup-close {
+    width: clamp(44px, 5.4vh, 76px);
+    height: clamp(44px, 5.4vh, 76px);
+}
+
+html.tv-mode .watch-btn,
+html.tv-mode .status-btn,
+html.tv-mode .delete-btn,
+html.tv-mode .report-btn {
+    font-size: clamp(14px, 1.8vh, 24px);
+    padding: clamp(12px, 1.5vh, 22px) clamp(16px, 1.6vw, 32px);
+}
+
+html.tv-mode .poster-play-btn {
+    padding: clamp(10px, 1.2vh, 20px) clamp(18px, 1.8vw, 36px);
+}
+
+html.tv-mode .poster-play-label {
+    font-size: clamp(14px, 1.8vh, 24px);
+}
+
+/* --------------------------------------------------------------------------
+   Поиск
+   -------------------------------------------------------------------------- */
+
+html.tv-mode .search-bar,
+html.tv-mode .ai-bar {
+    padding: clamp(14px, 1.8vh, 28px) clamp(20px, 2.2vw, 56px);
+    gap: clamp(12px, 1.2vw, 24px);
+}
+
+html.tv-mode .search-input-wrap {
+    max-width: clamp(600px, 70vw, 1500px);
+}
+
+html.tv-mode #search-input {
+    font-size: clamp(16px, 2.1vh, 30px);
+    padding-top: clamp(12px, 1.5vh, 22px);
+    padding-bottom: clamp(12px, 1.5vh, 22px);
+}
+
+html.tv-mode .search-body {
+    padding: clamp(16px, 2vh, 36px) clamp(20px, 2.2vw, 56px);
+}
+
+html.tv-mode .search-hint p,
+html.tv-mode .search-empty p {
+    font-size: clamp(14px, 1.9vh, 26px);
+}
+
+/* --------------------------------------------------------------------------
+   ИИ-ассистент
+   -------------------------------------------------------------------------- */
+
+html.tv-mode .ai-messages {
+    padding: clamp(16px, 2vh, 36px) clamp(20px, 2.2vw, 56px);
+    font-size: clamp(15px, 1.9vh, 26px);
+}
+
+html.tv-mode .ai-input-bar {
+    padding: clamp(12px, 1.6vh, 26px) clamp(20px, 2.2vw, 56px);
+}
+
+html.tv-mode #ai-input {
+    font-size: clamp(15px, 1.9vh, 26px);
+}
+
+html.tv-mode .ai-send-btn {
+    width: clamp(44px, 5.4vh, 76px);
+    height: clamp(44px, 5.4vh, 76px);
+}
+
+/* --------------------------------------------------------------------------
+   Настройки, профиль, модальные окна
+   -------------------------------------------------------------------------- */
+
+html.tv-mode .settings-sheet {
+    max-width: clamp(700px, 60vw, 1300px);
+    max-height: 88vh;
+    border-radius: var(--radius-xl);
+}
+
+html.tv-mode .settings-header h2 {
+    font-size: clamp(18px, 2.4vh, 34px);
+}
+
+html.tv-mode .settings-item-btn {
+    font-size: clamp(15px, 1.9vh, 26px);
+    padding: clamp(14px, 1.7vh, 26px) clamp(18px, 1.8vw, 34px);
+}
+
+html.tv-mode .settings-modal {
+    max-width: clamp(560px, 50vw, 1000px);
+}
+
+html.tv-mode .settings-modal h3 {
+    font-size: clamp(18px, 2.4vh, 34px);
+}
+
+html.tv-mode .settings-modal-description,
+html.tv-mode .bug-reason span,
+html.tv-mode .confirm-modal-btn {
+    font-size: clamp(14px, 1.8vh, 24px);
+}
+
+html.tv-mode .confirm-modal-btn {
+    padding: clamp(12px, 1.5vh, 22px) clamp(20px, 2vw, 40px);
+}
+
+html.tv-mode .bug-reason {
+    padding: clamp(10px, 1.2vh, 18px) clamp(12px, 1.2vw, 24px);
+}
+
+html.tv-mode .user-menu {
+    min-width: clamp(280px, 26vw, 520px);
+}
+
+html.tv-mode .user-menu-item {
+    font-size: clamp(14px, 1.8vh, 24px);
+    padding: clamp(12px, 1.5vh, 22px) clamp(16px, 1.6vw, 30px);
+}
+
+html.tv-mode .country-picker {
+    max-width: clamp(600px, 52vw, 1100px);
+}
+
+html.tv-mode .country-item {
+    font-size: clamp(14px, 1.8vh, 24px);
+    padding: clamp(12px, 1.5vh, 22px) clamp(16px, 1.6vw, 30px);
+}
+
+/* --------------------------------------------------------------------------
+   Экран входа
+   -------------------------------------------------------------------------- */
+
+html.tv-mode .auth-container {
+    max-width: clamp(420px, 40vw, 760px);
+}
+
+html.tv-mode .auth-logo h1 {
+    font-size: clamp(30px, 4vh, 60px);
+}
+
+html.tv-mode .auth-logo-icon {
+    font-size: clamp(40px, 5vh, 76px);
+}
+
+html.tv-mode .auth-subtitle,
+html.tv-mode .auth-switch {
+    font-size: clamp(14px, 1.8vh, 24px);
+}
+
+html.tv-mode .auth-form-title {
+    font-size: clamp(18px, 2.4vh, 34px);
+}
+
+html.tv-mode .input-group input,
+html.tv-mode .auth-btn {
+    font-size: clamp(15px, 1.9vh, 26px);
+    padding-top: clamp(13px, 1.6vh, 24px);
+    padding-bottom: clamp(13px, 1.6vh, 24px);
+}
+
+/* --------------------------------------------------------------------------
+   Трейлер — на весь экран телевизора
+
+   На телефоне трейлер играет в окне поверх карточки фильма. На телевизоре
+   смотрят с дивана, поэтому плеер разворачивается на весь экран, а выход —
+   кнопкой «Назад» на пульте (возвращает к описанию фильма).
+   -------------------------------------------------------------------------- */
+
+html.tv-mode .trailer-overlay {
+    padding: 0;
+    /* Размытие фона (backdrop-filter) телевизору очень дорого: движок
+       пересчитывает его каждый кадр поверх играющего видео. При этом
+       результат не виден — плеер занимает весь экран. */
+    background: #000;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+/* --------------------------------------------------------------------------
+   Пока идёт трейлер — отдаём телевизору всю производительность
+
+   Слабым приставкам не хватает мощности одновременно декодировать видео и
+   перерисовывать интерфейс под ним. Всё, что скрыто за полноэкранным
+   плеером, на время воспроизведения не рисуем и останавливаем анимации.
+   -------------------------------------------------------------------------- */
+
+html.tv-mode.tv-trailer-open body::before,
+html.tv-mode.tv-trailer-open .app-header,
+html.tv-mode.tv-trailer-open .tab-nav,
+html.tv-mode.tv-trailer-open .mood-filters,
+html.tv-mode.tv-trailer-open #main-app .screen,
+html.tv-mode.tv-trailer-open .popup-overlay,
+html.tv-mode.tv-trailer-open .app-announcement {
+    visibility: hidden;
+}
+
+/* Пульсация логотипа, мерцание заглушек и прочее фоновое движение. */
+html.tv-mode.tv-trailer-open *:not(.trailer-overlay):not(.trailer-modal):not(.trailer-frame) {
+    animation-play-state: paused !important;
+}
+
+html.tv-mode .trailer-modal {
+    width: 100vw;
+    height: 100vh;
+    max-width: none;
+    aspect-ratio: auto;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+html.tv-mode .trailer-frame,
+html.tv-mode .trailer-frame iframe {
+    width: 100%;
+    height: 100%;
+}
+
+html.tv-mode .trailer-close {
+    /* В мобильной вёрстке крестик вынесен над окном (top: -52px) —
+       на весь экран это увело бы его за границу кадра. */
+    top: clamp(16px, 2.4vh, 40px);
+    right: clamp(20px, 2.2vw, 56px);
+    width: clamp(44px, 5.4vh, 76px);
+    height: clamp(44px, 5.4vh, 76px);
+}
+
+/* --------------------------------------------------------------------------
+   Объявление с сервера
+   -------------------------------------------------------------------------- */
+
+html.tv-mode .app-announcement {
+    font-size: clamp(13px, 1.7vh, 22px);
+}
+
+html.tv-mode .app-announcement-title {
+    font-size: clamp(14px, 1.8vh, 24px);
+}

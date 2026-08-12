@@ -9,6 +9,9 @@ backend/.env
 keystore.properties
 android-signing/*.jks
 
+# Путь к Android SDK — свой на каждой машине
+local.properties
+
 # VK bot runtime data
 vk_bot/.env
 vk_bot/data/*.json

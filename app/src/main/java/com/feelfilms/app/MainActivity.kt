@@ -1,13 +1,21 @@
 package com.feelfilms.app
 
 import android.annotation.SuppressLint
+import android.app.UiModeManager
 import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.util.Log
+import android.view.InputDevice
+import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -62,7 +70,29 @@ class MainActivity : AppCompatActivity() {
     private var lastInterstitialShownAt = 0L
     private var appStartAt = 0L
     private var remoteConfig: JSONObject? = null
+
+    /**
+     * Открыт ли полноэкранный трейлер. Флаг выставляет веб-слой.
+     * Пока плеер на экране, он забирает фокус себе, и нажатия пульта
+     * до страницы не доходят — поэтому OK перехватываем здесь.
+     */
+    private var trailerOpen = false
     private val backendBaseUrl = "http://185.73.126.11:8000"
+
+    /**
+     * Телевизор или ТВ-приставка. Проверяем тремя способами, потому что
+     * дешёвые Android TV Box далеко не всегда сообщают о себе честно:
+     * режим интерфейса, поддержка leanback и отсутствие сенсорного экрана.
+     */
+    private val isTvDevice: Boolean by lazy {
+        val uiModeManager = getSystemService(Context.UI_MODE_SERVICE) as? UiModeManager
+        val isTelevisionUiMode =
+            uiModeManager?.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION
+        val hasLeanback = packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
+        val hasNoTouchscreen = !packageManager.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN)
+        isTelevisionUiMode || hasLeanback || hasNoTouchscreen
+    }
+
     private fun getCurrentVersionCode(): Long {
         return runCatching {
             packageManager.getPackageInfo(packageName, 0).longVersionCode
@@ -70,7 +100,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun getAppAssetsUrl(): String {
-        return "https://appassets.androidplatform.net/assets/index.html?v=${getCurrentVersionCode()}"
+        // Флаг tv включает (tv=1) или гарантированно выключает (tv=0)
+        // управление пультом и TV-раскладку. Передаём его всегда, чтобы на
+        // телефоне режим телевизора не мог включиться по ошибке.
+        val tvFlag = if (isTvDevice) "1" else "0"
+        return "https://appassets.androidplatform.net/assets/index.html" +
+            "?v=${getCurrentVersionCode()}&tv=$tvFlag"
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -92,7 +127,13 @@ class MainActivity : AppCompatActivity() {
         configureWebView(webView)
 
         // Force fresh UI assets after each app update to avoid stale CSS/JS from WebView cache.
-        webView.clearCache(true)
+        // На телевизоре кэш не чистим: интерфейс всё равно грузится из
+        // assets и обновляется по версии в адресе, а вот плеер трейлеров
+        // после очистки каждый раз заново качает свои скрипты — из-за
+        // этого он и запускается медленно.
+        if (!isTvDevice) {
+            webView.clearCache(true)
+        }
         if (savedInstanceState == null) {
             webView.loadUrl(getAppAssetsUrl())
         } else {
@@ -109,18 +150,72 @@ class MainActivity : AppCompatActivity() {
                     (webView.webChromeClient as? WebChromeClient)?.onHideCustomView()
                     return
                 }
-                if (webView.canGoBack()) {
-                    webView.goBack()
-                } else {
-                    finish()
+                if (isTvDevice) {
+                    // На телевизоре «Назад» сначала предлагаем закрыть
+                    // открытый экран приложения (трейлер, карточку фильма,
+                    // поиск) и только потом выходим.
+                    askWebLayerToHandleBack()
+                    return
                 }
+                navigateBackOrExit()
             }
         })
+    }
+
+    /**
+     * Пока открыт трейлер, OK на пульте превращаем в касание по центру
+     * экрана: кнопки плеера понимают только касание, а на телевизоре
+     * касаний нет. Для плеера это действие пользователя, поэтому
+     * воспроизведение идёт со звуком.
+     */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val isSelectKey = event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||
+            event.keyCode == KeyEvent.KEYCODE_ENTER ||
+            event.keyCode == KeyEvent.KEYCODE_BUTTON_A
+        if (isTvDevice && trailerOpen && isSelectKey) {
+            if (event.action == KeyEvent.ACTION_DOWN) {
+                runCatching { dispatchSyntheticTap(webView.width / 2f, webView.height / 2f) }
+                    .onFailure { error -> Log.w(TAG, "Player tap failed", error) }
+                Log.d(TAG, "OK on remote translated into a player tap")
+            }
+            return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    private fun navigateBackOrExit() {
+        if (webView.canGoBack()) {
+            webView.goBack()
+        } else {
+            finish()
+        }
+    }
+
+    private fun askWebLayerToHandleBack() {
+        val script = "(function(){try{" +
+            "return (window.FeelFilmTV && window.FeelFilmTV.handleBack()) ? '1' : '0';" +
+            "}catch(e){return '0';}})()"
+        runCatching {
+            webView.evaluateJavascript(script) { result ->
+                if (result?.contains('1') != true) {
+                    navigateBackOrExit()
+                }
+            }
+        }.onFailure { navigateBackOrExit() }
     }
 
     private fun configureAdMobScaffold() {
         hideBannerSlot()
         appStartAt = System.currentTimeMillis()
+
+        // На телевизоре рекламные форматы не показываем: баннер и
+        // межстраничная реклама рассчитаны на касания и перехватывали бы
+        // фокус пульта, из-за чего пользователь мог бы застрять на экране.
+        if (isTvDevice) {
+            Log.d(TAG, "Android TV detected — ads disabled")
+            return
+        }
+
         loadRemoteConfigAsync()
         MobileAds.initialize(this) {
             Log.d(TAG, "Yandex Mobile Ads SDK initialized")
@@ -406,18 +501,99 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private inner class AndroidTvBridge {
+        @JavascriptInterface
+        fun isTv(): Boolean = isTvDevice
+
+        /**
+         * Переводит нажатие OK на пульте в касание по центру экрана.
+         *
+         * Нужно для плеера трейлеров: он живёт на чужом домене, его кнопка
+         * «Play» реагирует только на касание, а на телевизоре касаний нет.
+         * Автозапуск же плеер разрешает себе только без звука. Синтетическое
+         * касание — это по-прежнему действие пользователя (он нажал OK),
+         * поэтому трейлер запускается сразу со звуком.
+         */
+        /** Веб-слой сообщает, открыт ли сейчас полноэкранный трейлер. */
+        @JavascriptInterface
+        fun setTrailerOpen(open: Boolean) {
+            trailerOpen = open
+        }
+
+        @JavascriptInterface
+        fun tapCenter() {
+            runOnUiThread {
+                val x = webView.width / 2f
+                val y = webView.height / 2f
+                runCatching {
+                    dispatchSyntheticTap(x, y)
+                    Log.d(TAG, "Center tap sent at $x,$y")
+                }.onFailure { error -> Log.w(TAG, "Center tap failed", error) }
+            }
+        }
+    }
+
+    /**
+     * Полноценное синтетическое касание. Упрощённой формы MotionEvent
+     * движку WebView недостаточно — он отбрасывает события без описания
+     * указателя, поэтому заполняем их явно.
+     */
+    private fun dispatchSyntheticTap(x: Float, y: Float) {
+        val properties = arrayOf(
+            MotionEvent.PointerProperties().apply {
+                id = 0
+                toolType = MotionEvent.TOOL_TYPE_FINGER
+            }
+        )
+        val coordinates = arrayOf(
+            MotionEvent.PointerCoords().apply {
+                this.x = x
+                this.y = y
+                pressure = 1f
+                size = 1f
+            }
+        )
+
+        val downAt = SystemClock.uptimeMillis()
+        val down = MotionEvent.obtain(
+            downAt, downAt, MotionEvent.ACTION_DOWN, 1, properties, coordinates,
+            0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0
+        )
+        val up = MotionEvent.obtain(
+            downAt, downAt + 80, MotionEvent.ACTION_UP, 1, properties, coordinates,
+            0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0
+        )
+
+        webView.dispatchTouchEvent(down)
+        webView.dispatchTouchEvent(up)
+        down.recycle()
+        up.recycle()
+    }
+
     private fun configureWebView(view: WebView) {
         CookieManager.getInstance().apply {
             setAcceptCookie(true)
             setAcceptThirdPartyCookies(view, true)
         }
         view.addJavascriptInterface(AndroidBridge(), "AndroidAds")
+        view.addJavascriptInterface(AndroidTvBridge(), "AndroidTV")
+
+        if (isTvDevice) {
+            // Без фокуса на WebView нажатия D-pad не доходят до страницы.
+            view.isFocusable = true
+            view.isFocusableInTouchMode = true
+            view.requestFocus()
+        }
 
         view.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
             databaseEnabled = true
-            cacheMode = WebSettings.LOAD_NO_CACHE
+            // На телевизоре разрешаем кэш: LOAD_NO_CACHE заставляет плеер
+            // трейлеров каждый раз тянуть свои скрипты и картинки из сети,
+            // а приставки к этому чувствительны. Свежесть интерфейса
+            // обеспечивает версия в адресе, а не отключённый кэш.
+            cacheMode = if (isTvDevice) WebSettings.LOAD_DEFAULT else WebSettings.LOAD_NO_CACHE
             allowFileAccess = false
             allowContentAccess = true
             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW

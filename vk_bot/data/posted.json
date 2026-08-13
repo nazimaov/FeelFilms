@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 19
+    "counter": 20
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -80,6 +80,12 @@
       "title": "Жертва обстоятельств",
       "post_id": 35,
       "type": "premiere"
+    },
+    "kinopoisk:4510025": {
+      "posted_at": 1786655319,
+      "title": "День разоблачения",
+      "post_id": 36,
+      "type": "recommendation"
     }
   }
 }

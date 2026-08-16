@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 20
+    "counter": 21
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -86,6 +86,12 @@
       "title": "День разоблачения",
       "post_id": 36,
       "type": "recommendation"
+    },
+    "kinopoisk:460586": {
+      "posted_at": 1786863483,
+      "title": "Пацаны",
+      "post_id": 37,
+      "type": "fact"
     }
   }
 }

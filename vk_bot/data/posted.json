@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 21
+    "counter": 22
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -92,6 +92,12 @@
       "title": "Пацаны",
       "post_id": 37,
       "type": "fact"
+    },
+    "kinopoisk:11440645": {
+      "posted_at": 1786981193,
+      "title": "Корни: Сага о вампирах",
+      "post_id": 38,
+      "type": "premiere"
     }
   }
 }

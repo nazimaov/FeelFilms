@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 22
+    "counter": 23
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -98,6 +98,12 @@
       "title": "Корни: Сага о вампирах",
       "post_id": 38,
       "type": "premiere"
+    },
+    "kinopoisk:5138994": {
+      "posted_at": 1786999454,
+      "title": "Приглашение",
+      "post_id": 39,
+      "type": "recommendation"
     }
   }
 }

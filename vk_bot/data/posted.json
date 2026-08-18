@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 23
+    "counter": 24
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -104,6 +104,12 @@
       "title": "Приглашение",
       "post_id": 39,
       "type": "recommendation"
+    },
+    "kinopoisk:1008445": {
+      "posted_at": 1787085863,
+      "title": "Человек-паук: Вдали от дома",
+      "post_id": 40,
+      "type": "fact"
     }
   }
 }

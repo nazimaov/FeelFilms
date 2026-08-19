@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 24
+    "counter": 25
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -110,6 +110,12 @@
       "title": "Человек-паук: Вдали от дома",
       "post_id": 40,
       "type": "fact"
+    },
+    "kinopoisk:13311817": {
+      "posted_at": 1787139786,
+      "title": "Время сиять",
+      "post_id": 41,
+      "type": "premiere"
     }
   }
 }

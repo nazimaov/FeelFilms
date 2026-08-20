@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 25
+    "counter": 26
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -116,6 +116,12 @@
       "title": "Время сиять",
       "post_id": 41,
       "type": "premiere"
+    },
+    "kinopoisk:6135670": {
+      "posted_at": 1787259019,
+      "title": "Смешарики сквозь вселенные",
+      "post_id": 42,
+      "type": "recommendation"
     }
   }
 }

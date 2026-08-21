@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 27
+    "counter": 28
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -128,6 +128,12 @@
       "title": "Число зверя",
       "post_id": 43,
       "type": "fact"
+    },
+    "kinopoisk:8738503": {
+      "posted_at": 1787327454,
+      "title": "Мегрэ и убийство в высшем обществе",
+      "post_id": 44,
+      "type": "premiere"
     }
   }
 }

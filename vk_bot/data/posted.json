@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 26
+    "counter": 27
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -122,6 +122,12 @@
       "title": "Смешарики сквозь вселенные",
       "post_id": 42,
       "type": "recommendation"
+    },
+    "kinopoisk:5319835": {
+      "posted_at": 1787296109,
+      "title": "Число зверя",
+      "post_id": 43,
+      "type": "fact"
     }
   }
 }

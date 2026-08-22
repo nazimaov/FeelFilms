@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 28
+    "counter": 29
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -134,6 +134,12 @@
       "title": "Мегрэ и убийство в высшем обществе",
       "post_id": 44,
       "type": "premiere"
+    },
+    "kinopoisk:1382256": {
+      "posted_at": 1787382389,
+      "title": "Проект «Конец света»",
+      "post_id": 45,
+      "type": "recommendation"
     }
   }
 }

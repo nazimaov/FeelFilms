@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 29
+    "counter": 30
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -140,6 +140,12 @@
       "title": "Проект «Конец света»",
       "post_id": 45,
       "type": "recommendation"
+    },
+    "kinopoisk:8472578": {
+      "posted_at": 1787431364,
+      "title": "Я ругаюсь",
+      "post_id": 46,
+      "type": "fact"
     }
   }
 }

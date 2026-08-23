@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 30
+    "counter": 31
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -146,6 +146,12 @@
       "title": "Я ругаюсь",
       "post_id": 46,
       "type": "fact"
+    },
+    "kinopoisk:11727676": {
+      "posted_at": 1787485093,
+      "title": "Демоны Чёрной горы",
+      "post_id": 47,
+      "type": "premiere"
     }
   }
 }

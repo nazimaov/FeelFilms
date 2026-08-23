@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 31
+    "counter": 32
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -152,6 +152,12 @@
       "title": "Демоны Чёрной горы",
       "post_id": 47,
       "type": "premiere"
+    },
+    "kinopoisk:11832286": {
+      "posted_at": 1787499306,
+      "title": "Стерлинг-Поинт",
+      "post_id": 48,
+      "type": "recommendation"
     }
   }
 }

@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 32
+    "counter": 33
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -158,6 +158,12 @@
       "title": "Стерлинг-Поинт",
       "post_id": 48,
       "type": "recommendation"
+    },
+    "kinopoisk:5253825": {
+      "posted_at": 1787604711,
+      "title": "Фонари",
+      "post_id": 49,
+      "type": "fact"
     }
   }
 }

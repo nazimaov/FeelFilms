@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 34
+    "counter": 35
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -170,6 +170,12 @@
       "title": "TheatreHD: Зальцбург: Отель Метаморфоз",
       "post_id": 50,
       "type": "premiere"
+    },
+    "kinopoisk:5437614": {
+      "posted_at": 1787852439,
+      "title": "Майкл",
+      "post_id": 51,
+      "type": "recommendation"
     }
   }
 }

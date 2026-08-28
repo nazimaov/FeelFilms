@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 35
+    "counter": 36
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -176,6 +176,12 @@
       "title": "Майкл",
       "post_id": 51,
       "type": "recommendation"
+    },
+    "kinopoisk:6385370": {
+      "posted_at": 1787891117,
+      "title": "Одиссея",
+      "post_id": 52,
+      "type": "fact"
     }
   }
 }

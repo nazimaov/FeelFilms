@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 36
+    "counter": 37
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -182,6 +182,12 @@
       "title": "Одиссея",
       "post_id": 52,
       "type": "fact"
+    },
+    "kinopoisk:8484833": {
+      "posted_at": 1788043558,
+      "title": "Последний богатырь. Колобок",
+      "post_id": 53,
+      "type": "premiere"
     }
   }
 }

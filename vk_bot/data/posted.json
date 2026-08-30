@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 38
+    "counter": 39
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -194,6 +194,12 @@
       "title": "Сергей Орлов. Розовый леопард",
       "post_id": 54,
       "type": "recommendation"
+    },
+    "kinopoisk:568082": {
+      "posted_at": 1788115212,
+      "title": "Реальные пацаны",
+      "post_id": 55,
+      "type": "fact"
     }
   }
 }

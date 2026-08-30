@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 37
+    "counter": 38
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -188,6 +188,12 @@
       "title": "Последний богатырь. Колобок",
       "post_id": 53,
       "type": "premiere"
+    },
+    "kinopoisk:13442502": {
+      "posted_at": 1788091186,
+      "title": "Сергей Орлов. Розовый леопард",
+      "post_id": 54,
+      "type": "recommendation"
     }
   }
 }

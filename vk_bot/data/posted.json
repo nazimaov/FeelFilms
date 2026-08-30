@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 39
+    "counter": 40
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -200,6 +200,12 @@
       "title": "Реальные пацаны",
       "post_id": 55,
       "type": "fact"
+    },
+    "kinopoisk:13250424": {
+      "posted_at": 1788130071,
+      "title": "Борьба за Бруклин",
+      "post_id": 56,
+      "type": "premiere"
     }
   }
 }

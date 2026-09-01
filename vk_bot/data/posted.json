@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 40
+    "counter": 41
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -206,6 +206,12 @@
       "title": "Борьба за Бруклин",
       "post_id": 56,
       "type": "premiere"
+    },
+    "kinopoisk:412344": {
+      "posted_at": 1788302675,
+      "title": "Менталист",
+      "post_id": 57,
+      "type": "recommendation"
     }
   }
 }

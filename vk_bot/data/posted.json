@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 41
+    "counter": 42
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -212,6 +212,12 @@
       "title": "Менталист",
       "post_id": 57,
       "type": "recommendation"
+    },
+    "kinopoisk:5024113": {
+      "posted_at": 1788546382,
+      "title": "Тёмная материя",
+      "post_id": 58,
+      "type": "fact"
     }
   }
 }

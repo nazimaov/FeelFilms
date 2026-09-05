@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 42
+    "counter": 43
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -218,6 +218,12 @@
       "title": "Тёмная материя",
       "post_id": 58,
       "type": "fact"
+    },
+    "kinopoisk:6606441": {
+      "posted_at": 1788604337,
+      "title": "Турбулентность",
+      "post_id": 59,
+      "type": "premiere"
     }
   }
 }

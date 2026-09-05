@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 43
+    "counter": 44
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -224,6 +224,12 @@
       "title": "Турбулентность",
       "post_id": 59,
       "type": "premiere"
+    },
+    "kinopoisk:4541515": {
+      "posted_at": 1788616408,
+      "title": "Укрытие",
+      "post_id": 60,
+      "type": "recommendation"
     }
   }
 }

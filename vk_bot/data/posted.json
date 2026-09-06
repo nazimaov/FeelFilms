@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 44
+    "counter": 45
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -230,6 +230,12 @@
       "title": "Укрытие",
       "post_id": 60,
       "type": "recommendation"
+    },
+    "kinopoisk:4443734": {
+      "posted_at": 1788703807,
+      "title": "Фишер",
+      "post_id": 61,
+      "type": "fact"
     }
   }
 }

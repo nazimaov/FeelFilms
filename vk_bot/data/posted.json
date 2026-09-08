@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 45
+    "counter": 46
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -236,6 +236,12 @@
       "title": "Фишер",
       "post_id": 61,
       "type": "fact"
+    },
+    "kinopoisk:8005532": {
+      "posted_at": 1788907355,
+      "title": "Восставший",
+      "post_id": 62,
+      "type": "premiere"
     }
   }
 }

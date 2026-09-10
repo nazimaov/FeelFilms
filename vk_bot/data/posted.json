@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 46
+    "counter": 47
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -242,6 +242,12 @@
       "title": "Восставший",
       "post_id": 62,
       "type": "premiere"
+    },
+    "kinopoisk:5582050": {
+      "posted_at": 1789080095,
+      "title": "Мятеж",
+      "post_id": 63,
+      "type": "recommendation"
     }
   }
 }

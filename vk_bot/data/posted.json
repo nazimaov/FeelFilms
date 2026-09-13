@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 47
+    "counter": 48
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -248,6 +248,12 @@
       "title": "Мятеж",
       "post_id": 63,
       "type": "recommendation"
+    },
+    "kinopoisk:1306638": {
+      "posted_at": 1789338449,
+      "title": "Мир! Дружба! Жвачка!",
+      "post_id": 64,
+      "type": "fact"
     }
   }
 }

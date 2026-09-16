@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 48
+    "counter": 49
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -254,6 +254,12 @@
       "title": "Мир! Дружба! Жвачка!",
       "post_id": 64,
       "type": "fact"
+    },
+    "kinopoisk:5906585": {
+      "posted_at": 1789599530,
+      "title": "Тайная жизнь вещей",
+      "post_id": 65,
+      "type": "premiere"
     }
   }
 }

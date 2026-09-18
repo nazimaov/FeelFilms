@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 49
+    "counter": 50
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -260,6 +260,12 @@
       "title": "Тайная жизнь вещей",
       "post_id": 65,
       "type": "premiere"
+    },
+    "kinopoisk:9238410": {
+      "posted_at": 1789730034,
+      "title": "Марик",
+      "post_id": 66,
+      "type": "recommendation"
     }
   }
 }

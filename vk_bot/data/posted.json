@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 50
+    "counter": 51
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -266,6 +266,12 @@
       "title": "Марик",
       "post_id": 66,
       "type": "recommendation"
+    },
+    "kinopoisk:10086817": {
+      "posted_at": 1790535927,
+      "title": "Истребители",
+      "post_id": 68,
+      "type": "fact"
     }
   }
 }

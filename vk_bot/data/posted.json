@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 52
+    "counter": 53
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -278,6 +278,12 @@
       "title": "Между нами, девочками",
       "post_id": 69,
       "type": "premiere"
+    },
+    "kinopoisk:8496236": {
+      "posted_at": 1790798754,
+      "title": "Гипотеза любви",
+      "post_id": 70,
+      "type": "recommendation"
     }
   }
 }

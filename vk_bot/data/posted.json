@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 51
+    "counter": 52
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -272,6 +272,12 @@
       "title": "Истребители",
       "post_id": 68,
       "type": "fact"
+    },
+    "kinopoisk:9251086": {
+      "posted_at": 1790771369,
+      "title": "Между нами, девочками",
+      "post_id": 69,
+      "type": "premiere"
     }
   }
 }

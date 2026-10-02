@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 53
+    "counter": 54
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -284,6 +284,12 @@
       "title": "Гипотеза любви",
       "post_id": 70,
       "type": "recommendation"
+    },
+    "kinopoisk:7645770": {
+      "posted_at": 1790944679,
+      "title": "Невский. Наследство архитектора",
+      "post_id": 71,
+      "type": "fact"
     }
   }
 }

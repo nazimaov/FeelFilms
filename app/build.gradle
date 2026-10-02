@@ -14,12 +14,12 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace = "com.feelfilms.app"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.feelfilm.app"
         minSdk = 24
-        targetSdk = 35
+        targetSdk = 36
         versionCode = appVersionCode
         versionName = appVersionName
     }
@@ -76,5 +76,5 @@ dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.webkit:webkit:1.12.1")
-    implementation("com.yandex.android:mobileads:7.6.0")
+    implementation("com.yandex.android:mobileads:7.18.5")
 }

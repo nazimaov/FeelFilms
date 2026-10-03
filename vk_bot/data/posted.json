@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 55
+    "counter": 56
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -296,6 +296,12 @@
       "title": "Барбоскины. 15 лет вместе",
       "post_id": 72,
       "type": "premiere"
+    },
+    "kinopoisk:8550745": {
+      "posted_at": 1791068729,
+      "title": "Спецы",
+      "post_id": 73,
+      "type": "recommendation"
     }
   }
 }

@@ -411,6 +411,7 @@ body.app-booting #main-app {
     cursor: grab;
     user-select: none;
     touch-action: none;
+    will-change: transform, opacity;
     box-shadow: var(--shadow-card);
     transition: box-shadow var(--transition);
     will-change: transform;
@@ -894,8 +895,6 @@ body.app-booting #main-app {
     align-items: flex-end;
     justify-content: center;
     background: rgba(0, 0, 0, 0.65);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.3s ease;
@@ -938,7 +937,6 @@ body.app-booting #main-app {
     justify-content: center;
     cursor: pointer;
     transition: var(--transition);
-    backdrop-filter: blur(4px);
 }
 
 .popup-close:hover {
@@ -966,6 +964,31 @@ body.app-booting #main-app {
             rgba(21, 24, 32, 0.9) 36%,
             rgba(21, 24, 32, 0.25) 68%,
             transparent 100%);
+}
+
+/* Встроенный трейлер поверх постера (телефон). Закрывается вместе с карточкой. */
+.popup-player {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    background: #000;
+}
+
+.popup-player iframe {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    display: block;
+}
+
+/* Пока играет трейлер: убираем затемнение постера и даём названию отступ от плеера. */
+.popup-poster.is-playing::after {
+    display: none;
+}
+
+.popup-poster.is-playing + .popup-content {
+    margin-top: 0;
+    padding-top: 20px;
 }
 
 .popup-content {
@@ -1196,8 +1219,6 @@ body.app-booting #main-app {
     padding: 4px 12px;
     border-radius: 999px;
     background: rgba(9, 12, 18, 0.62);
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
 }
 
@@ -1222,8 +1243,6 @@ body.app-booting #main-app {
     align-items: center;
     justify-content: center;
     padding: 16px;
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
     opacity: 0;
     transition: opacity 0.2s ease;
 }
@@ -1280,6 +1299,136 @@ body.app-booting #main-app {
     display: block;
 }
 
+/* Поиск фильма на RuTube: окно становится прокручиваемым списком. */
+.trailer-modal.is-search {
+    aspect-ratio: auto;
+    height: min(80vh, 640px);
+    overflow-y: auto;
+    background: var(--bg-secondary);
+}
+
+.trailer-modal.is-search .trailer-frame {
+    height: auto;
+    background: transparent;
+}
+
+.rutube-search {
+    padding: 20px;
+    color: #fff;
+}
+
+.rutube-search-title {
+    margin: 0 0 6px;
+    font-size: 18px;
+}
+
+.rutube-search-status {
+    margin: 0 0 14px;
+    font-size: 14px;
+    opacity: 0.7;
+}
+
+.rutube-search-item {
+    display: flex;
+    gap: 12px;
+    width: 100%;
+    margin-bottom: 8px;
+    padding: 8px;
+    border: none;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.06);
+    color: #fff;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.rutube-search-item:hover {
+    background: rgba(233, 69, 96, 0.25);
+}
+
+.rutube-search-thumb {
+    width: 120px;
+    aspect-ratio: 16 / 9;
+    flex-shrink: 0;
+    border-radius: 8px;
+    object-fit: cover;
+    background: #000;
+}
+
+.rutube-search-text {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-width: 0;
+}
+
+.rutube-search-name {
+    font-size: 14px;
+    line-height: 1.3;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.rutube-alt-btn {
+    position: absolute;
+    left: 12px;
+    bottom: 12px;
+    z-index: 3;
+    padding: 8px 14px;
+    border: none;
+    border-radius: 999px;
+    background: rgba(9, 12, 18, 0.75);
+    color: #fff;
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.rutube-search-elsewhere {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 16px;
+}
+
+.rutube-search-elsewhere-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    width: 100%;
+    margin-top: 10px;
+}
+
+.rutube-search-elsewhere-row[hidden] {
+    display: none;
+}
+
+.rutube-search-elsewhere .rutube-search-status {
+    width: 100%;
+    margin: 0;
+}
+
+.rutube-open-btn {
+    padding: 10px 18px;
+    border: none;
+    border-radius: 999px;
+    background: #e94560;
+    color: #fff;
+    font: inherit;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.rutube-search-meta {
+    margin-top: 4px;
+    font-size: 12px;
+    opacity: 0.6;
+}
+
 @media (max-width: 640px) {
     .trailer-close {
         top: 8px;
@@ -1296,16 +1445,17 @@ body.app-booting #main-app {
     display: flex;
     align-items: flex-end;
     justify-content: center;
-    background: rgba(6, 8, 14, 0.72);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
+    background: rgba(6, 8, 14, 0.85);
+    overscroll-behavior: contain;
     opacity: 0;
+    visibility: hidden;
     pointer-events: none;
-    transition: opacity 0.26s ease;
+    transition: opacity 0.26s ease, visibility 0.26s;
 }
 
 .country-picker-overlay.active {
     opacity: 1;
+    visibility: visible;
     pointer-events: auto;
 }
 
@@ -1454,7 +1604,6 @@ body.app-booting #main-app {
     border: 1px solid rgba(255, 255, 255, 0.06);
     border-radius: var(--radius-lg);
     padding: 28px 24px;
-    backdrop-filter: blur(12px);
     animation: card-in 0.5s var(--spring) both;
 }
 
@@ -1667,7 +1816,6 @@ body.app-booting #main-app {
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: var(--radius-md);
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(16px);
     opacity: 0;
     pointer-events: none;
     transform: translateY(-8px) scale(0.96);
@@ -1767,8 +1915,6 @@ body.app-booting #main-app {
     justify-content: center;
     align-items: flex-end;
     background: rgba(5, 7, 12, 0.72);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.24s ease;
@@ -1895,8 +2041,6 @@ body.app-booting #main-app {
     align-items: center;
     padding: 20px;
     background: rgba(4, 6, 10, 0.74);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.2s ease;

@@ -759,9 +759,10 @@ class MainActivity : AppCompatActivity() {
                     ): Boolean {
                         val popupUrl = request?.url?.toString().orEmpty()
                         if (popupUrl.isNotBlank()) {
-                            val js = "var f=document.getElementById('trailer-frame');" +
-                                "if(f){var i=f.querySelector('iframe');if(i){i.src=" +
-                                org.json.JSONObject.quote(popupUrl) + ";}}"
+                            // Телефон: плеер в карточке фильма (#popup-player). ТВ: модалка (#trailer-frame).
+                            val js = "var i=document.querySelector('#popup-player:not([hidden]) iframe')" +
+                                "||document.querySelector('#trailer-frame iframe');" +
+                                "if(i){i.src=" + org.json.JSONObject.quote(popupUrl) + ";}"
                             view?.evaluateJavascript(js, null)
                         }
                         hiddenWebView.destroy()

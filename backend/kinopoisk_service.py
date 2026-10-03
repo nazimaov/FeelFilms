@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import html
 import json
 import logging
 import os
@@ -17,12 +18,100 @@ from requests.adapters import HTTPAdapter
 
 logger = logging.getLogger("feelfilms.kinopoisk")
 
+# Полный фильм на RuTube — не короче 50 минут (серии сериалов короче).
+MOVIE_MIN_DURATION_SECONDS = 50 * 60
+RUTUBE_SERIES_MARKERS = re.compile(r"сезон|серия|серии|эпизод|\bs\d{1,2}e\d{1,3}\b", re.IGNORECASE)
+# Результаты поиска RuTube кэшируем, чтобы не дергать его на каждое открытие карточки.
+RUTUBE_SEARCH_TTL_SECONDS = 6 * 3600
+_rutube_search_cache: Dict[tuple, tuple] = {}
+_rutube_search_cache_lock = threading.Lock()
+
+
+def _normalize_title(text: str) -> str:
+    text = text.lower().replace("ё", "е")
+    return " ".join(re.sub(r"[^0-9a-zа-я]+", " ", text).split())
+
 
 def _env_float(name: str, default: float) -> float:
     try:
         return float(os.getenv(name, str(default)))
     except (TypeError, ValueError):
         return default
+
+
+MAILRU_SEARCH_URL = "https://my.mail.ru/video/search"
+_MAILRU_ITEM_RE = re.compile(r'<div class="sp-video__video-list__item ">(.*?)(?=<div class="sp-video__video-list__item |\Z)', re.S)
+_MAILRU_HREF_RE = re.compile(r'href="/mail/([^/"]+)/video/(?:[^"]*/)?(\d+)\.html"')
+_MAILRU_DURATION_RE = re.compile(r'sp-video__video-list__duration">([\d:]+)<')
+_MAILRU_TITLE_RE = re.compile(r'sp-video__video-list__name__text"[^>]*>(.*?)</p>', re.S)
+_MAILRU_VIEWS_RE = re.compile(r'sp-video-icon-view-gray">([^<]+)<')
+_MAILRU_DATE_RE = re.compile(r'sp-video__video-list__time">[^<]*?\d{2}\.\d{2}\.(\d{4})')
+_MAILRU_THUMB_RE = re.compile(r"background-image: url\('([^']+)'\)")
+_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _parse_clock(text: str) -> int:
+    """'2:03:53' или '45:10' -> секунды."""
+    seconds = 0
+    for part in text.split(":"):
+        seconds = seconds * 60 + int(part)
+    return seconds
+
+
+def _parse_views(text: str) -> int:
+    """'37.5K' -> 37500 (Mail.ru показывает сокращённо)."""
+    raw = html.unescape(text).replace(" ", "").replace(" ", "").upper()
+    multiplier = 1
+    if raw.endswith("K"):
+        multiplier, raw = 1000, raw[:-1]
+    elif raw.endswith("M"):
+        multiplier, raw = 1_000_000, raw[:-1]
+    try:
+        return int(float(raw.replace(",", ".")) * multiplier)
+    except ValueError:
+        return 0
+
+
+# Ролик показываем, если набрал не меньше этого балла (из 100). Год каталога
+# может отличаться от года в названии ролика, поэтому порог ниже 60.
+WATCH_MIN_SCORE = 50
+_FULL_MOVIE_MARKERS = re.compile(r"full\s*movie|full\s*film|полн\w*\s+фильм|полная\s+версия", re.IGNORECASE)
+
+
+def _score_candidate(item: dict, runtime_minutes: Optional[int]) -> int:
+    """Балл соответствия ролика фильму: название 40, год 25, длительность 25, тип 10.
+
+    Длительность не отбрасывает ролик, а только добавляет баллы при совпадении.
+    """
+    score = 40  # название уже проверено фильтром _is_full_film_candidate
+    if item["yearMatch"]:
+        score += 25
+    if runtime_minutes:
+        # Длительность из каталога может не совпадать с версией на сайте, поэтому
+        # она только добавляет баллы и никогда не отбрасывает ролик.
+        diff = abs(item["duration"] / 60 - runtime_minutes)
+        if diff <= 5:
+            score += 25
+        elif diff <= 15:
+            score += 15
+        elif diff <= 20:
+            score += 5
+    else:
+        # Длительность фильма неизвестна: не штрафуем. Без этого 20 баллов ролик
+        # с совпавшим названием не проходил порог, если год тоже не совпал.
+        score += 20
+    if _FULL_MOVIE_MARKERS.search(item["title"]):
+        score += 10
+    return score
+
+
+def _is_full_film_candidate(title: str, duration: int, wanted_compact: str) -> bool:
+    """Полный фильм: не короче 50 минут, не серия, название фильма есть в заголовке."""
+    if duration < MOVIE_MIN_DURATION_SECONDS:
+        return False
+    if RUTUBE_SERIES_MARKERS.search(title):
+        return False
+    return wanted_compact in _normalize_title(title).replace(" ", "")
 
 
 class UpstreamServiceError(Exception):
@@ -636,6 +725,121 @@ class KinopoiskService:
                 break
 
         return best[1] if best else None
+
+    def search_film_videos(
+        self,
+        query: str,
+        limit: int = 12,
+        year: Optional[int] = None,
+        runtime_minutes: Optional[int] = None,
+    ) -> List[dict]:
+        """Полные фильмы из RuTube и Mail.ru по названию, лучший результат первым.
+
+        Каждому ролику ставится балл соответствия (см. ``_score_candidate``), в
+        выдачу попадают только ролики с баллом не ниже ``WATCH_MIN_SCORE``.
+        Сортировка: балл, затем RuTube раньше Mail.ru, затем просмотры.
+        Возвращает ``[{id, source, title, duration, hits, yearMatch, score, embedUrl, thumbnail}]``.
+        """
+        wanted_compact = _normalize_title(query).replace(" ", "")
+        if not wanted_compact:
+            return []
+        cache_key = (wanted_compact, int(year) if year else None, runtime_minutes, limit)
+        now = time.time()
+        with _rutube_search_cache_lock:
+            cached = _rutube_search_cache.get(cache_key)
+        if cached and now - cached[0] < RUTUBE_SEARCH_TTL_SECONDS:
+            return copy.deepcopy(cached[1])
+
+        year_text = str(year) if year else ""
+        items = self._search_rutube_items(query, wanted_compact, year_text)
+        items += self._search_mailru_items(query, wanted_compact, year_text)
+        for item in items:
+            item["score"] = _score_candidate(item, runtime_minutes)
+        items = [it for it in items if it["score"] >= WATCH_MIN_SCORE]
+        source_rank = {"rutube": 1, "mailru": 0}
+        items.sort(key=lambda it: (it["score"], source_rank[it["source"]], it["hits"]), reverse=True)
+        result = items[:limit]
+        with _rutube_search_cache_lock:
+            _rutube_search_cache[cache_key] = (now, copy.deepcopy(result))
+        return result
+
+    def _search_rutube_items(self, query: str, wanted_compact: str, year_text: str) -> List[dict]:
+        try:
+            resp = self._session.get(
+                "https://rutube.ru/api/search/video/",
+                params={"query": query.strip()},
+                headers={
+                    "Accept": "application/json",
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+                },
+                timeout=(self.config.connect_timeout_seconds, self.config.read_timeout_seconds),
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        except (requests.RequestException, ValueError) as exc:
+            logger.warning("RuTube search failed for %r: %s", query, exc)
+            return []
+
+        items: List[dict] = []
+        for item in (data.get("results") or []):
+            video_id = (item.get("id") or "").strip()
+            title = (item.get("title") or "").strip()
+            duration = int(item.get("duration") or 0)
+            if not video_id or not _is_full_film_candidate(title, duration, wanted_compact):
+                continue
+            items.append({
+                "id": video_id,
+                "source": "rutube",
+                "title": title,
+                "duration": duration,
+                "thumbnail": item.get("thumbnail_url") or "",
+                "hits": int(item.get("hits") or 0),
+                "yearMatch": bool(year_text and year_text in title),
+                "embedUrl": f"https://rutube.ru/play/embed/{video_id}?autoplay=1",
+            })
+        return items
+
+    def _search_mailru_items(self, query: str, wanted_compact: str, year_text: str) -> List[dict]:
+        try:
+            resp = self._session.get(
+                MAILRU_SEARCH_URL,
+                params={"q": query.strip()},
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                         "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"},
+                timeout=(self.config.connect_timeout_seconds, self.config.read_timeout_seconds),
+            )
+            resp.raise_for_status()
+            page = resp.text
+        except requests.RequestException as exc:
+            logger.warning("Mail.ru search failed for %r: %s", query, exc)
+            return []
+
+        items: List[dict] = []
+        for block in _MAILRU_ITEM_RE.findall(page):
+            href = _MAILRU_HREF_RE.search(block)
+            duration = _MAILRU_DURATION_RE.search(block)
+            title_match = _MAILRU_TITLE_RE.search(block)
+            if not (href and duration and title_match):
+                continue
+            user, video_id = href.group(1), href.group(2)
+            title = html.unescape(_TAG_RE.sub("", title_match.group(1))).strip()
+            seconds = _parse_clock(duration.group(1))
+            if not _is_full_film_candidate(title, seconds, wanted_compact):
+                continue
+            views = _MAILRU_VIEWS_RE.search(block)
+            thumb = _MAILRU_THUMB_RE.search(block)
+            items.append({
+                "id": video_id,
+                "source": "mailru",
+                "title": title,
+                "duration": seconds,
+                "thumbnail": ("https:" + html.unescape(thumb.group(1))) if thumb and thumb.group(1).startswith("//") else "",
+                "hits": _parse_views(views.group(1)) if views else 0,
+                "yearMatch": bool(year_text and year_text in title),
+                "embedUrl": f"https://my.mail.ru/mail/{user}/video/embed/video/{video_id}",
+            })
+        return items
 
     def _find_rutube_trailer(self, film_id: int) -> Optional[dict]:
         key = str(int(film_id))

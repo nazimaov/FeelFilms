@@ -422,6 +422,17 @@ def get_movie_similars(film_id: int) -> dict:
         raise HTTPException(status_code=500, detail="Internal server error") from exc
 
 
+@app.get("/api/rutube/search")
+def search_rutube(
+    q: str = Query(..., min_length=2, max_length=200),
+    year: int | None = Query(None, ge=1900, le=2100),
+    runtime: int | None = Query(None, ge=1, le=1000),
+) -> dict:
+    """Ролики полных фильмов из RuTube и Mail.ru с баллом соответствия, лучший первый."""
+    items = movie_service.search_film_videos(q, year=year, runtime_minutes=runtime)
+    return {"query": q, "total": len(items), "items": items}
+
+
 @app.get("/api/movies/{film_id}/videos")
 def get_movie_videos(film_id: int) -> dict:
     logger.info("GET /api/movies/%s/videos", film_id)

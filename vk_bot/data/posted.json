@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 54
+    "counter": 55
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -290,6 +290,12 @@
       "title": "Невский. Наследство архитектора",
       "post_id": 71,
       "type": "fact"
+    },
+    "kinopoisk:13954214": {
+      "posted_at": 1791027720,
+      "title": "Барбоскины. 15 лет вместе",
+      "post_id": 72,
+      "type": "premiere"
     }
   }
 }

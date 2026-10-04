@@ -88,14 +88,10 @@ class Bot:
 
         message = self.generator.generate(item, hashtags=self.cfg.hashtags, cta=self.cfg.cta)
 
-        # Первая строка поста (заголовок) становится ссылкой на страницу фильма
-        # на Кинопоиске: формат ВК [url|текст]. Адрес не виден, ссылка кликабельна.
-        # Токен сообщества не даёт загружать фото, поэтому обложку ВК строит по ссылке.
-        if item.film_id:
-            first_line, _, rest = message.partition("\n")
-            url = f"https://www.kinopoisk.ru/film/{item.film_id}/"
-            safe_line = first_line.replace("[", "").replace("]", "").replace("|", "")
-            message = f"[{url}|{safe_line}]\n{rest}"
+        # Ссылка на страницу фильма на Кинопоиске идёт во вложение (attachments),
+        # а не текстом: ВК по ней строит карточку с обложкой (og:image).
+        # Токен сообщества не даёт загружать фото, поэтому обложка — через карточку.
+        kinopoisk_link = f"https://www.kinopoisk.ru/film/{item.film_id}/" if item.film_id else None
 
         image_bytes = self.images.download(item.poster_url)
 
@@ -110,6 +106,10 @@ class Bot:
             return True
 
         attachments = []
+
+        # Внешняя ссылка — единственное вложение-ссылка на пост; ВК строит из неё карточку.
+        if kinopoisk_link:
+            attachments.append(kinopoisk_link)
 
         # Загружаем постер (если удалось скачать). Пост без картинки всё равно уходит.
         # NB: photos.getWallUploadServer недоступен group-токену — при таком

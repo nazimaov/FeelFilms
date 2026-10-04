@@ -88,6 +88,11 @@ class Bot:
 
         message = self.generator.generate(item, hashtags=self.cfg.hashtags, cta=self.cfg.cta)
 
+        # Ссылка на страницу фильма на Кинопоиске: ВК по ней сам строит карточку
+        # с обложкой (og:image). Работает с токеном сообщества, в отличие от фото.
+        if item.film_id:
+            message += f"\n\nhttps://www.kinopoisk.ru/film/{item.film_id}/"
+
         image_bytes = self.images.download(item.poster_url)
 
         if dry_run:

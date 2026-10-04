@@ -63,6 +63,7 @@ ALLOWED_FIELDS = {
     "genres",           # массив строк ["боевик", "триллер"] — нормализуется под формат каталога
     "trailerUrl",       # ссылка на встраиваемый плеер (RuTube embed или widget Kinopoisk)
     "trailerName",
+    "watchUrl",         # ссылка для кнопки «Смотреть» (только легальные источники)
 }
 
 MAX_HISTORY = 200  # версий на фильм суммарно храним последние 200 записей
@@ -102,6 +103,8 @@ def _sanitize(fields: Dict[str, Any]) -> Dict[str, Any]:
             val = _normalize_genres(val)
         elif isinstance(val, str):
             val = val.strip()
+        if key == "watchUrl" and isinstance(val, str) and val and not val.startswith("https://"):
+            val = None
         if key == "trailerUrl" and isinstance(val, str) and val:
             # Приводим страницу RuTube к embed-виду, чтобы «просто скопированная»
             # ссылка сразу проигрывалась в приложении.

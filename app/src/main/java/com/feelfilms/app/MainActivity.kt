@@ -217,18 +217,55 @@ class MainActivity : AppCompatActivity() {
         }
 
         loadRemoteConfigAsync()
-        MobileAds.initialize(this) {
-            Log.d(TAG, "Yandex Mobile Ads SDK initialized")
-            if (getConfigBool("banner_enabled", true)) {
-                loadYandexBanner()
-            } else {
-                Log.d(TAG, "Banner disabled via remote config")
+        installYandexAdsCrashGuard()
+        try {
+            MobileAds.initialize(this) {
+                Log.d(TAG, "Yandex Mobile Ads SDK initialized")
+                if (getConfigBool("banner_enabled", true)) {
+                    loadYandexBanner()
+                } else {
+                    Log.d(TAG, "Banner disabled via remote config")
+                }
+                if (getConfigBool("interstitial_enabled", true)) {
+                    setupInterstitial()
+                } else {
+                    Log.d(TAG, "Interstitial disabled via remote config")
+                }
             }
-            if (getConfigBool("interstitial_enabled", true)) {
-                setupInterstitial()
-            } else {
-                Log.d(TAG, "Interstitial disabled via remote config")
+        } catch (error: Throwable) {
+            Log.e(TAG, "Yandex Mobile Ads SDK failed to initialize", error)
+        }
+    }
+
+    /**
+     * На части устройств Transsion (Tecno/Infinix/itel) Yandex Mobile Ads SDK
+     * падает с IllegalArgumentException: protocol TLSv1 is not supported —
+     * системный security-provider там отключает устаревший TLSv1, а SDK
+     * всё равно пытается создать под него SSLContext. Падение происходит
+     * асинхронно в фоновом потоке самого SDK (поток "YandexAds.*"), поэтому
+     * try/catch вокруг initialize() его не перехватывает — глушим именно
+     * такие исключения на уровне default uncaught exception handler, не
+     * трогая крахи из остального приложения.
+     */
+    private fun installYandexAdsCrashGuard() {
+        val currentHandler = Thread.getDefaultUncaughtExceptionHandler()
+        if (currentHandler is YandexAdsCrashGuard) return
+        Thread.setDefaultUncaughtExceptionHandler(YandexAdsCrashGuard(currentHandler))
+    }
+
+    private class YandexAdsCrashGuard(
+        private val delegate: Thread.UncaughtExceptionHandler?
+    ) : Thread.UncaughtExceptionHandler {
+        override fun uncaughtException(thread: Thread, throwable: Throwable) {
+            val isFromYandexAds = thread.name.startsWith("YandexAds") ||
+                generateSequence(throwable) { it.cause }
+                    .flatMap { it.stackTrace.asSequence() }
+                    .any { it.className.startsWith("com.yandex.mobile.ads") }
+            if (isFromYandexAds) {
+                Log.e(TAG, "Suppressed crash from Yandex Mobile Ads SDK", throwable)
+                return
             }
+            delegate?.uncaughtException(thread, throwable)
         }
     }
 
@@ -584,6 +621,32 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        // На телевизорах (в том числе Яндекс ТВ) стоит не мобильный
+        // «ru.kinopoisk», а отдельная TV-сборка с другим именем пакета.
+        // Ссылка при этом привязана к мобильному пакету, поэтому система
+        // предлагает доустановить его из Google Play вместо открытия фильма.
+        // Ищем то приложение, которое действительно установлено.
+        val installedKinopoisk = KINOPOISK_PACKAGES.firstOrNull { isPackageInstalled(it) }
+        if (installedKinopoisk != null) {
+            val attempts = mutableListOf<Intent>()
+            if (filmId != null) {
+                attempts += Intent(Intent.ACTION_VIEW, Uri.parse("kinopoisk://film/$filmId"))
+                    .setPackage(installedKinopoisk)
+            }
+            attempts += Intent(Intent.ACTION_VIEW, uri).setPackage(installedKinopoisk)
+            // Последняя попытка: просто открыть приложение — это хуже, чем
+            // сразу нужный фильм, но лучше, чем окно выбора браузера.
+            packageManager.getLaunchIntentForPackage(installedKinopoisk)?.let { attempts += it }
+
+            for (intent in attempts) {
+                val launched = runCatching { startActivity(intent); true }.getOrDefault(false)
+                if (launched) {
+                    Log.d(TAG, "Movie opened in $installedKinopoisk via ${intent.data ?: "launch intent"}")
+                    return true
+                }
+            }
+        }
+
         if (filmId != null) {
             val deepLink = Intent(Intent.ACTION_VIEW, Uri.parse("kinopoisk://film/$filmId"))
             val canHandle = runCatching {
@@ -607,6 +670,13 @@ class MainActivity : AppCompatActivity() {
      * движку WebView недостаточно — он отбрасывает события без описания
      * указателя, поэтому заполняем их явно.
      */
+    private fun isPackageInstalled(packageName: String): Boolean {
+        return runCatching {
+            packageManager.getPackageInfo(packageName, 0)
+            true
+        }.getOrDefault(false)
+    }
+
     private fun dispatchSyntheticTap(x: Float, y: Float) {
         val properties = arrayOf(
             MotionEvent.PointerProperties().apply {
@@ -689,9 +759,10 @@ class MainActivity : AppCompatActivity() {
                     ): Boolean {
                         val popupUrl = request?.url?.toString().orEmpty()
                         if (popupUrl.isNotBlank()) {
-                            val js = "var f=document.getElementById('trailer-frame');" +
-                                "if(f){var i=f.querySelector('iframe');if(i){i.src=" +
-                                org.json.JSONObject.quote(popupUrl) + ";}}"
+                            // Телефон: плеер в карточке фильма (#popup-player). ТВ: модалка (#trailer-frame).
+                            val js = "var i=document.querySelector('#popup-player:not([hidden]) iframe')" +
+                                "||document.querySelector('#trailer-frame iframe');" +
+                                "if(i){i.src=" + org.json.JSONObject.quote(popupUrl) + ";}"
                             view?.evaluateJavascript(js, null)
                         }
                         hiddenWebView.destroy()
@@ -877,6 +948,19 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val TAG = "FeelFilmsApp"
+
+        /**
+         * Возможные имена приложения Кинопоиск. TV-сборка называется иначе,
+         * чем мобильная, и на телевизорах установлена именно она. Порядок
+         * важен: сначала телевизионные варианты.
+         */
+        private val KINOPOISK_PACKAGES = listOf(
+            "ru.kinopoisk.tv",
+            "com.yandex.tv.kinopoisk",
+            "ru.kinopoisk.tv.player",
+            "ru.yandex.kinopoisk",
+            "ru.kinopoisk"
+        )
         private const val BANNER_MAX_HEIGHT_DP = 50
     }
 }

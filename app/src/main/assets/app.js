@@ -1144,7 +1144,9 @@ const popupToggleWatchedText = $('popup-toggle-watched-text');
 const popupTrailerBtn = $('popup-trailer');
 const popupWatchBtn = $('popup-watch');
 const trailerOverlay = $('trailer-overlay');
+const trailerModal = $('trailer-modal');
 const trailerFrame = $('trailer-frame');
+const popupPlayer = $('popup-player');
 const trailerClose = $('trailer-close');
 const userMenu = $('user-menu');
 const userName = $('user-name');
@@ -1279,11 +1281,14 @@ function setAuthLoading(btnId, isLoading) {
  */
 function setupAuthObserver() {
     let isInitialAuthResolved = false;
+    const revealBootScreen = () => {
+        if (isInitialAuthResolved) return;
+        isInitialAuthResolved = true;
+        document.body.classList.remove('app-booting');
+    };
+    setTimeout(revealBootScreen, 3000);
     onAuthStateChanged(auth, (user) => {
-        if (!isInitialAuthResolved) {
-            isInitialAuthResolved = true;
-            document.body.classList.remove('app-booting');
-        }
+        revealBootScreen();
         if (user) {
             // ✅ Пользователь вошёл
             const isNewUserSession = state.user?.uid !== user.uid;
@@ -2137,12 +2142,25 @@ function getPrimaryCountryName(movie) {
     return '';
 }
 
+function getAllCountryNames(movie) {
+    if (Array.isArray(movie.countries) && movie.countries.length > 0) {
+        return movie.countries.map((c) => String(c).trim()).filter(Boolean);
+    }
+    if (typeof movie.countriesText === 'string' && movie.countriesText.trim()) {
+        return movie.countriesText.split(',').map((c) => c.trim()).filter(Boolean);
+    }
+    return [];
+}
+
 function formatCountryWithFlag(movie) {
-    const country = getPrimaryCountryName(movie);
-    if (!country) return '';
-    const iso = countryNameToIsoCode(country);
-    const flag = isoToFlagEmoji(iso);
-    return flag ? `${flag} ${country}` : country;
+    const names = getAllCountryNames(movie);
+    if (names.length === 0) return '';
+    return names
+        .map((country) => {
+            const flag = isoToFlagEmoji(countryNameToIsoCode(country));
+            return flag ? `${flag} ${country}` : country;
+        })
+        .join(', ');
 }
 
 function setPopupMetaChip(node, value) {
@@ -2632,7 +2650,6 @@ function openYearPicker() {
 function closeCountryPicker() {
     if (!countryPickerOverlay) return;
     countryPickerOverlay.classList.remove('active');
-    document.body.style.overflow = '';
 }
 
 function selectCountry(countryName) {
@@ -2644,15 +2661,24 @@ function selectCountry(countryName) {
     loadMovies();
 }
 
+let countryPickerBuilt = false;
+
 function renderCountryPickerList() {
     if (!countryPickerList) return;
     const selectedCountry = normalizeTextForCompare(state.selectedCountry);
-    countryPickerList.innerHTML = '';
+
+    if (countryPickerBuilt) {
+        countryPickerList.querySelectorAll('.country-item').forEach((btn) => {
+            btn.classList.toggle('selected', btn.dataset.country === selectedCountry);
+        });
+        return;
+    }
+    countryPickerBuilt = true;
 
     const resetBtn = document.createElement('button');
     resetBtn.type = 'button';
     resetBtn.className = 'country-item';
-    if (!selectedCountry) resetBtn.classList.add('selected');
+    resetBtn.dataset.country = '';
     resetBtn.innerHTML = `
         <span class="country-flag">${safeFlag('🌍')}</span>
         <span class="country-name">Любая страна</span>
@@ -2664,8 +2690,7 @@ function renderCountryPickerList() {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'country-item';
-        const isSelected = normalizeTextForCompare(country.name) === selectedCountry;
-        if (isSelected) btn.classList.add('selected');
+        btn.dataset.country = normalizeTextForCompare(country.name);
         btn.innerHTML = `
             <span class="country-flag">${safeFlag(country.flag)}</span>
             <span class="country-name">${country.name}</span>
@@ -2673,13 +2698,14 @@ function renderCountryPickerList() {
         btn.addEventListener('click', () => selectCountry(country.name));
         countryPickerList.appendChild(btn);
     });
+
+    renderCountryPickerList();
 }
 
 function openCountryPicker() {
     if (!countryPickerOverlay) return;
     renderCountryPickerList();
     countryPickerOverlay.classList.add('active');
-    document.body.style.overflow = 'hidden';
 }
 
 function getPreferredContentType() {
@@ -2945,25 +2971,48 @@ function buildEmbedUrl(trailer) {
     return '';
 }
 
-function openTrailerPlayer(trailer) {
-    if (!trailer || !trailer.url || !trailerOverlay || !trailerFrame) return;
-    const embedUrl = buildEmbedUrl(trailer);
-    if (!embedUrl) return;
-    trailerFrame.innerHTML = '';
+function createTrailerIframe(embedUrl) {
     const iframe = document.createElement('iframe');
     iframe.src = embedUrl;
     iframe.setAttribute('title', 'Трейлер');
     iframe.setAttribute('allow', 'accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen');
     iframe.setAttribute('allowfullscreen', 'true');
     iframe.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
-    trailerFrame.appendChild(iframe);
-    trailerOverlay.classList.add('active');
-    document.body.style.overflow = 'hidden';
+    return iframe;
+}
+
+function openTrailerPlayer(trailer) {
+    if (!trailer || !trailer.url) return;
+    const embedUrl = buildEmbedUrl(trailer);
+    if (!embedUrl) return;
+    // На телефоне плеер встраивается в шапку карточки фильма. На телевизоре
+    // он по-прежнему открывается на весь экран (см. tv.css).
+    if (document.documentElement.classList.contains('tv-mode')) {
+        if (!trailerOverlay || !trailerFrame) return;
+        trailerFrame.innerHTML = '';
+        trailerFrame.appendChild(createTrailerIframe(embedUrl));
+        trailerOverlay.classList.add('active');
+        document.body.style.overflow = 'hidden';
+        return;
+    }
+    if (!popupPlayer) return;
+    popupPlayer.innerHTML = '';
+    popupPlayer.appendChild(createTrailerIframe(embedUrl));
+    popupPlayer.hidden = false;
+    popupPoster?.classList.add('is-playing');
+    hidePopupTrailerButton();
 }
 
 function closeTrailerPlayer() {
+    if (popupPlayer) {
+        popupPlayer.innerHTML = '';
+        popupPlayer.hidden = true;
+    }
+    popupPoster?.classList.remove('is-playing');
     if (!trailerOverlay) return;
     trailerOverlay.classList.remove('active');
+    trailerModal?.classList.remove('is-search');
+    setRutubeAltButton(false);
     if (trailerFrame) trailerFrame.innerHTML = '';
     if (!popupOverlay?.classList.contains('active')) {
         document.body.style.overflow = '';
@@ -2990,10 +3039,154 @@ function isMovieWatchable(movie) {
     return true; // вышедший фильм — скорее всего доступен онлайн
 }
 
-// Кнопка «Смотреть»: открывает страницу фильма на Кинопоиске, где есть
-// официальный блок «Смотреть» со ссылками на онлайн-кинотеатры (Окко, Иви,
-// КИОН, START, PREMIER и др.) — именно там, где фильм реально доступен.
-// Если смотреть онлайн негде — кнопка показывается неактивной.
+let rutubeRequestId = 0;
+let rutubeTitle = '';
+let rutubeItems = [];
+
+async function fetchRutubeSearch(query, year, runtime) {
+    const yearParam = year ? `&year=${encodeURIComponent(year)}` : '';
+    const runtimeParam = runtime ? `&runtime=${encodeURIComponent(runtime)}` : '';
+    const url = `${BACKEND_API_BASE}/api/rutube/search?q=${encodeURIComponent(query)}${yearParam}${runtimeParam}`;
+    const response = await fetch(url, {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+        cache: 'no-store'
+    });
+    if (!response.ok) throw new Error(`RuTube search HTTP ${response.status}`);
+    const data = await response.json();
+    return Array.isArray(data?.items) ? data.items : [];
+}
+
+function formatRutubeDuration(seconds) {
+    const total = Math.max(0, Math.round(Number(seconds) || 0));
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    return hours ? `${hours} ч ${minutes} мин` : `${minutes} мин`;
+}
+
+function setRutubeAltButton(visible) {
+    trailerModal?.querySelector('.rutube-alt-btn')?.remove();
+    if (!visible || !trailerModal) return;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'rutube-alt-btn';
+    button.textContent = 'Другие варианты';
+    button.addEventListener('click', () => renderRutubePanel('Выберите видео:', rutubeItems));
+    trailerModal.appendChild(button);
+}
+
+function playRutubeVideo(item) {
+    if (!trailerFrame) return;
+    trailerModal?.classList.remove('is-search');
+    trailerFrame.innerHTML = '';
+    const embedUrl = item.embedUrl;
+    trailerFrame.appendChild(createTrailerIframe(embedUrl));
+    setRutubeAltButton(rutubeItems.length > 1);
+}
+
+function buildRutubeListItem(item) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'rutube-search-item';
+
+    const thumb = document.createElement('img');
+    thumb.className = 'rutube-search-thumb';
+    thumb.alt = '';
+    thumb.loading = 'lazy';
+    if (item.thumbnail) thumb.src = item.thumbnail;
+
+    const text = document.createElement('span');
+    text.className = 'rutube-search-text';
+    const name = document.createElement('span');
+    name.className = 'rutube-search-name';
+    name.textContent = item.title || 'Без названия';
+    const meta = document.createElement('span');
+    meta.className = 'rutube-search-meta';
+    meta.textContent = formatRutubeDuration(item.duration);
+    text.append(name, meta);
+
+    button.append(thumb, text);
+    button.addEventListener('click', () => playRutubeVideo(item));
+    return button;
+}
+
+// Показывает панель в окне: заголовок, статус и (если есть) список роликов.
+function renderRutubePanel(statusText, items) {
+    if (!trailerFrame) return;
+    setRutubeAltButton(false);
+    trailerModal?.classList.add('is-search');
+    trailerFrame.innerHTML = '';
+
+    const panel = document.createElement('div');
+    panel.className = 'rutube-search';
+    const heading = document.createElement('h3');
+    heading.className = 'rutube-search-title';
+    heading.textContent = rutubeTitle;
+    const status = document.createElement('p');
+    status.className = 'rutube-search-status';
+    status.textContent = statusText;
+    panel.append(heading, status);
+
+    if (items.length) {
+        const list = document.createElement('div');
+        list.className = 'rutube-search-list';
+        items.forEach((item) => list.appendChild(buildRutubeListItem(item)));
+        panel.appendChild(list);
+    }
+    trailerFrame.appendChild(panel);
+    return panel;
+}
+
+// Кнопка «Смотреть»: ищет фильм на RuTube по названию и году. Лучший ролик
+// включается сам; остальные доступны по кнопке «Другие варианты».
+// Если в плеере ничего не нашли, даём официальный запасной вариант: Кинопоиск.
+// Ссылка открывает приложение, если оно установлено, иначе сайт.
+function addSearchElsewhereButtons(panel, movie) {
+    const kinopoiskId = Number(movie?.kinopoiskId || movie?.id);
+    if (!Number.isFinite(kinopoiskId) || kinopoiskId <= 0) return;
+    const wrap = document.createElement('div');
+    wrap.className = 'rutube-search-elsewhere';
+    // Кинопоиск — официальный запасной вариант: там показаны легальные онлайн-кинотеатры.
+    const kinopoiskButton = document.createElement('button');
+    kinopoiskButton.type = 'button';
+    kinopoiskButton.className = 'rutube-open-btn';
+    kinopoiskButton.textContent = 'Смотреть на Кинопоиске';
+    kinopoiskButton.addEventListener('click', () => openExternalUrl(`https://www.kinopoisk.ru/film/${kinopoiskId}/`));
+    wrap.appendChild(kinopoiskButton);
+    panel.appendChild(wrap);
+}
+
+function openRutubeSearch(movie) {
+    if (!trailerOverlay || !trailerFrame) return;
+    rutubeTitle = (movie?.title || '').toString().trim();
+    rutubeItems = [];
+    const requestId = ++rutubeRequestId;
+    renderRutubePanel('Ищем на RuTube…', []);
+
+    trailerOverlay.classList.add('active');
+    document.body.style.overflow = 'hidden';
+
+    fetchRutubeSearch(rutubeTitle, movie?.year, movie?.filmLength)
+        .then((items) => {
+            // Окно могли закрыть или открыть другой фильм, пока шёл запрос.
+            if (requestId !== rutubeRequestId || !trailerOverlay.classList.contains('active')) return;
+            rutubeItems = items;
+            if (!items.length) {
+                addSearchElsewhereButtons(renderRutubePanel('Подходящих видео не нашли.', []), movie);
+                return;
+            }
+            // Список подходящих видео внутри окна, выбор за пользователем.
+            renderRutubePanel('Выберите видео:', items);
+        })
+        .catch(() => {
+            if (requestId !== rutubeRequestId) return;
+            addSearchElsewhereButtons(renderRutubePanel('Не удалось выполнить поиск. Попробуйте позже.', []), movie);
+        });
+}
+
+// Кнопка «Смотреть»: поиск фильма на RuTube по названию. Если у фильма задана
+// своя ссылка (watchUrl), открываем её. Если смотреть онлайн негде — кнопка
+// показывается неактивной.
 function setupPopupWatchButton(movie) {
     if (!popupWatchBtn) return;
     const kinopoiskId = Number(movie?.kinopoiskId || movie?.id);
@@ -3004,10 +3197,13 @@ function setupPopupWatchButton(movie) {
     }
 
     popupWatchBtn.style.display = '';
-    if (isMovieWatchable(movie)) {
+    const customWatchUrl = typeof movie?.watchUrl === 'string' && movie.watchUrl.startsWith('https://') ? movie.watchUrl : '';
+    if (customWatchUrl || isMovieWatchable(movie)) {
         popupWatchBtn.classList.remove('is-disabled');
         popupWatchBtn.disabled = false;
-        popupWatchBtn.onclick = () => openExternalUrl(`https://www.kinopoisk.ru/film/${kinopoiskId}/`);
+        popupWatchBtn.onclick = customWatchUrl
+            ? () => openExternalUrl(customWatchUrl)
+            : () => openRutubeSearch(movie);
     } else {
         popupWatchBtn.classList.add('is-disabled');
         popupWatchBtn.disabled = true;
@@ -3418,8 +3614,24 @@ function showEmpty() {
 // Рендеринг карточек (стек)
 // ============================================================
 
+let renderCardsToken = 0;
+
+function preloadImage(url) {
+    return new Promise((resolve) => {
+        if (!url) {
+            resolve();
+            return;
+        }
+        const img = new Image();
+        img.onload = resolve;
+        img.onerror = resolve;
+        img.src = url;
+        setTimeout(resolve, 1500);
+    });
+}
+
 function renderCards() {
-    cardStack.innerHTML = '';
+    const token = ++renderCardsToken;
 
     const remaining = state.movies.slice(state.currentIndex);
     const sanitizedRemaining = remaining.filter((movie) => isDiscoverCardDisplayable(movie));
@@ -3431,24 +3643,35 @@ function renderCards() {
         saveDiscoverFeedCache();
     }
     const visible = sanitizedRemaining.slice(0, 3);
+    const topMovie = visible[0];
 
-    visible.forEach((movie, i) => {
-        const card = createCardElement(movie, i);
-        cardStack.appendChild(card);
-    });
+    const commit = () => {
+        if (token !== renderCardsToken) return;
 
-    const topCard = cardStack.querySelector('.movie-card');
-    if (topCard) {
-        const topMovie = visible[0];
-        if (topMovie && topMovie.id !== state.lastShownMovieId) {
-            markMovieAsShown(topMovie.id);
-            markMovieAsSeen(topMovie.id);
-            state.lastShownMovieId = topMovie.id;
+        cardStack.innerHTML = '';
+        visible.forEach((movie, i) => {
+            const card = createCardElement(movie, i);
+            cardStack.appendChild(card);
+        });
+
+        const topCard = cardStack.querySelector('.movie-card');
+        if (topCard) {
+            if (topMovie.id !== state.lastShownMovieId) {
+                markMovieAsShown(topMovie.id);
+                markMovieAsSeen(topMovie.id);
+                state.lastShownMovieId = topMovie.id;
+            }
+            enableSwipe(topCard);
+            void prefetchNextMoviesIfNeeded();
+        } else if (!state.isLoading) {
+            loadMovies();
         }
-        enableSwipe(topCard);
-        void prefetchNextMoviesIfNeeded();
-    } else if (!state.isLoading) {
-        loadMovies();
+    };
+
+    if (topMovie) {
+        preloadImage(getCardPosterUrl(topMovie)).then(commit);
+    } else {
+        commit();
     }
 }
 
@@ -4250,6 +4473,38 @@ function clearSearchInput() {
 let aiHistory = [];   // [{role:'user'|'assistant', content:str}]
 let aiBusy = false;
 const AI_GREETING = 'Привет! Я помогу найти фильм или сериал по описанию. Расскажите, что помните: сцену, сюжет, героев, диалог — что угодно.';
+const AI_TRANSCRIPT_KEY_PREFIX = 'feelfilms_ai_transcript_v1_';
+const AI_TRANSCRIPT_MAX_ENTRIES = 50;
+let aiTranscript = [];   // [{kind:'text', role, content} | {kind:'movies', movies}]
+
+function getAITranscriptKey() {
+    return state.user ? `${AI_TRANSCRIPT_KEY_PREFIX}${state.user.uid}` : null;
+}
+
+function loadAITranscript() {
+    const key = getAITranscriptKey();
+    if (!key) return [];
+    try {
+        const parsed = JSON.parse(localStorage.getItem(key) || '[]');
+        if (!Array.isArray(parsed)) return [];
+        return parsed.filter((e) => e && (e.kind === 'movies'
+            ? Array.isArray(e.movies)
+            : (e.role === 'user' || e.role === 'assistant') && typeof e.content === 'string'));
+    } catch (err) {
+        return [];
+    }
+}
+
+function recordAIEntry(entry) {
+    aiTranscript = [...aiTranscript, entry].slice(-AI_TRANSCRIPT_MAX_ENTRIES);
+    const key = getAITranscriptKey();
+    if (!key) return;
+    try {
+        localStorage.setItem(key, JSON.stringify(aiTranscript));
+    } catch (err) {
+        console.warn('Не удалось сохранить историю ИИ:', err);
+    }
+}
 
 function scrollAIToBottom() {
     if (aiMessages) aiMessages.scrollTop = aiMessages.scrollHeight;
@@ -4316,8 +4571,24 @@ function openAI() {
     document.body.style.overflow = 'hidden';
     bindOverlayViewport(aiOverlay);
     userMenu.classList.remove('active');
-    if (aiHistory.length === 0 && aiMessages && !aiMessages.children.length) {
-        renderAIBubble('assistant', AI_GREETING);
+    if (aiTranscript.length === 0) aiTranscript = loadAITranscript();
+    if (aiHistory.length === 0) {
+        aiHistory = aiTranscript
+            .filter((e) => e.kind === 'text')
+            .map((e) => ({ role: e.role, content: e.content }));
+    }
+    if (aiMessages && !aiMessages.children.length) {
+        if (aiTranscript.length === 0) {
+            renderAIBubble('assistant', AI_GREETING);
+        } else {
+            aiTranscript.forEach((e) => {
+                if (e.kind === 'movies') {
+                    renderAIMovies(e.movies);
+                } else {
+                    renderAIBubble(e.role, e.content);
+                }
+            });
+        }
     }
     setTimeout(() => aiInput && aiInput.focus(), 60);
 }
@@ -4339,6 +4610,7 @@ async function sendAIMessage() {
     autoGrowAIInput();
     renderAIBubble('user', text);
     aiHistory.push({ role: 'user', content: text });
+    recordAIEntry({ kind: 'text', role: 'user', content: text });
     aiBusy = true;
     if (aiSendBtn) aiSendBtn.disabled = true;
     showAITyping();
@@ -4360,11 +4632,15 @@ async function sendAIMessage() {
         if (reply) {
             renderAIBubble('assistant', reply);
             aiHistory.push({ role: 'assistant', content: reply });
+            recordAIEntry({ kind: 'text', role: 'assistant', content: reply });
         }
         const movies = Array.isArray(data.movies)
             ? data.movies.map(normalizeMovie).filter((m) => Number.isFinite(m.id))
             : [];
-        if (movies.length) renderAIMovies(movies);
+        if (movies.length) {
+            renderAIMovies(movies);
+            recordAIEntry({ kind: 'movies', movies });
+        }
         if (!reply && !movies.length) {
             renderAIBubble('assistant', 'Не удалось ничего найти. Попробуйте вспомнить ещё детали.');
         }

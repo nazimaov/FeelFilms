@@ -173,7 +173,8 @@ const EDITABLE_FIELDS = [
     { key: 'posterUrl', label: 'Постер (URL)', type: 'text' },
     { key: 'posterUrlPreview', label: 'Постер (превью URL)', type: 'text' },
     { key: 'trailerUrl', label: 'URL трейлера', type: 'text', hint: 'Вставь любую ссылку RuTube (обычную rutube.ru/video/... или embed rutube.ru/play/embed/...) — она сама превратится в embed. Также поддерживается виджет Кинопоиска (widgets.kinopoisk.ru/...). Пустое поле = вернуть авто-трейлер.' },
-    { key: 'trailerName', label: 'Название трейлера', type: 'text' }
+    { key: 'trailerName', label: 'Название трейлера', type: 'text' },
+    { key: 'watchUrl', label: 'Ссылка «Смотреть»', type: 'text', hint: 'Адрес https://, куда ведёт кнопка «Смотреть» в приложении. Только легальные источники. Пустое поле = страница Кинопоиска.' }
 ];
 
 let catalogState = { results: [], selectedId: null, currentData: null, editorTab: 'edit' };

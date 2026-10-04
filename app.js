@@ -2987,8 +2987,24 @@ function showEmpty() {
 // Рендеринг карточек (стек)
 // ============================================================
 
+let renderCardsToken = 0;
+
+function preloadImage(url) {
+    return new Promise((resolve) => {
+        if (!url) {
+            resolve();
+            return;
+        }
+        const img = new Image();
+        img.onload = resolve;
+        img.onerror = resolve;
+        img.src = url;
+        setTimeout(resolve, 1500);
+    });
+}
+
 function renderCards() {
-    cardStack.innerHTML = '';
+    const token = ++renderCardsToken;
 
     const remaining = state.movies.slice(state.currentIndex);
     const sanitizedRemaining = remaining.filter((movie) => isDiscoverCardDisplayable(movie));
@@ -3000,24 +3016,35 @@ function renderCards() {
         saveDiscoverFeedCache();
     }
     const visible = sanitizedRemaining.slice(0, 3);
+    const topMovie = visible[0];
 
-    visible.forEach((movie, i) => {
-        const card = createCardElement(movie, i);
-        cardStack.appendChild(card);
-    });
+    const commit = () => {
+        if (token !== renderCardsToken) return;
 
-    const topCard = cardStack.querySelector('.movie-card');
-    if (topCard) {
-        const topMovie = visible[0];
-        if (topMovie && topMovie.id !== state.lastShownMovieId) {
-            markMovieAsShown(topMovie.id);
-            markMovieAsSeen(topMovie.id);
-            state.lastShownMovieId = topMovie.id;
+        cardStack.innerHTML = '';
+        visible.forEach((movie, i) => {
+            const card = createCardElement(movie, i);
+            cardStack.appendChild(card);
+        });
+
+        const topCard = cardStack.querySelector('.movie-card');
+        if (topCard) {
+            if (topMovie.id !== state.lastShownMovieId) {
+                markMovieAsShown(topMovie.id);
+                markMovieAsSeen(topMovie.id);
+                state.lastShownMovieId = topMovie.id;
+            }
+            enableSwipe(topCard);
+            void prefetchNextMoviesIfNeeded();
+        } else if (!state.isLoading) {
+            loadMovies();
         }
-        enableSwipe(topCard);
-        void prefetchNextMoviesIfNeeded();
-    } else if (!state.isLoading) {
-        loadMovies();
+    };
+
+    if (topMovie) {
+        preloadImage(getCardPosterUrl(topMovie)).then(commit);
+    } else {
+        commit();
     }
 }
 

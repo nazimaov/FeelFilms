@@ -31,7 +31,11 @@
         </intent>
         <package android:name="ru.kinopoisk" />
         <package android:name="ru.kinopoisk.tv" />
+        <package android:name="ru.kinopoisk.tv.player" />
+        <package android:name="ru.yandex.kinopoisk" />
+        <package android:name="com.yandex.tv.kinopoisk" />
         <package android:name="com.yandex.tv.home" />
+        <package android:name="com.yandex.tv.videoplayer" />
     </queries>
 
     <application

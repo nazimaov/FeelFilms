@@ -169,25 +169,13 @@
         const rect = el.getBoundingClientRect();
         if (rect.width < 2 || rect.height < 2) return false;
 
-        // Проверяем и сам элемент, и всех предков: скрытым может быть
-        // любой из них, а вложенный элемент об этом «не знает».
-        let node = el;
-        while (node && node !== document.documentElement) {
-            const style = window.getComputedStyle(node);
-            if (style.visibility === 'hidden' || style.display === 'none') return false;
-
-            // Открытый слой в первые доли секунды ещё анимируется
-            // (opacity 0 → 1), но фокус в него ставить уже пора —
-            // иначе после открытия карточки фильма пульт остался бы
-            // управлять экраном под ней.
-            const isAppearing = node.classList.contains('active');
-            if (!isAppearing) {
-                if (Number(style.opacity) === 0) return false;
-                if (style.pointerEvents === 'none' && node !== el) return false;
-            }
-
-            node = node.parentElement;
-        }
+        // Стили спрашиваем только у самого элемента — обход всех предков
+        // заметно тормозил телевизор при перерисовке рядов. Этого хватает:
+        // у детей скрытого контейнера размеры нулевые (отсеются выше), а
+        // visibility наследуется. Полупрозрачные окна отсекает проверка
+        // isInsideInactiveOverlay — они прячутся классом, а не стилем.
+        const style = window.getComputedStyle(el);
+        if (style.visibility === 'hidden' || style.display === 'none') return false;
 
         return true;
     }
@@ -350,9 +338,11 @@
             background.style.backgroundImage = `url('${cover}')`;
         });
 
-        document.querySelectorAll('.fav-card img').forEach((poster) => {
+        document.querySelectorAll('.fav-card img:not([data-tv-cover])').forEach((poster) => {
             const cover = coverByPosterUrl.get(poster.getAttribute('src') || '');
-            if (cover && poster.src !== cover) poster.src = cover;
+            if (!cover || poster.src === cover) return;
+            poster.dataset.tvCover = '1';
+            poster.src = cover;
         });
     }
 
@@ -1000,23 +990,28 @@
      * если элемент под фокусом исчез — переводим фокус на разумную замену.
      */
     function watchDomChanges() {
-        let scheduled = false;
+        let scheduled = null;
 
         const observer = new MutationObserver(() => {
+            // Приложение перерисовывает ряд фильтров целиком — это десятки
+            // изменений подряд. Обрабатываем их одной пачкой, иначе
+            // телевизор заметно подвисает при переключении жанра.
             if (scheduled) return;
-            scheduled = true;
-            window.requestAnimationFrame(() => {
-                scheduled = false;
+            scheduled = window.setTimeout(() => {
+                scheduled = null;
                 ensureFocusAlive();
                 applyWideCovers();
-            });
+            }, 90);
         });
 
         observer.observe(document.body, {
             childList: true,
             subtree: true,
             attributes: true,
-            attributeFilter: ['class', 'style']
+            // Следим только за классами: ими открываются и закрываются окна.
+            // Изменения style приложение делает часто (анимации карточек), а
+            // для нас они бесполезны — лишний поток событий.
+            attributeFilter: ['class']
         });
     }
 

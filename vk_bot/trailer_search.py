@@ -53,18 +53,32 @@ class RutubeTrailerSearch:
             logger.warning("Поиск трейлера на RuTube не удался (%s): %s", query, exc)
             return None
 
+        # Сначала ролики с названием фильма и словом «трейлер», потом просто «трейлер».
+        name = title.lower()
+        best_url, best_score, best_title, best_duration = None, 0, "", 0
         for item in data.get("results", []):
             url = item.get("video_url")
             duration = item.get("duration") or 0
-            if not url:
+            if not url or not (_MIN_DURATION <= duration <= _MAX_DURATION):
                 continue
-            if not (_MIN_DURATION <= duration <= _MAX_DURATION):
-                continue
+            video_title = (item.get("title") or "").lower()
+            score = 0
+            if "трейлер" in video_title or "trailer" in video_title:
+                score = 1
+                if name and name in video_title:
+                    score = 2
+            if score > best_score:
+                best_url, best_score = url, score
+                best_title, best_duration = item.get("title") or "", duration
+            if best_score == 2:
+                break
+
+        if best_url:
             logger.info(
                 "Найден трейлер на RuTube: «%s» (%ss) %s",
-                (item.get("title") or "")[:60], duration, url,
+                best_title[:60], best_duration, best_url,
             )
-            return url
+            return best_url
 
         logger.info("Подходящего трейлера на RuTube не найдено: %s", query)
         return None

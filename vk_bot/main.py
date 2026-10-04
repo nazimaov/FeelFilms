@@ -86,13 +86,16 @@ class Bot:
         if self.cfg.attach_trailer_link:
             item.trailer_url = self.trailer.search(item.title, item.year) or ""
 
-        # Ссылка на страницу фильма на Кинопоиске ставится ПЕРВОЙ ссылкой в тексте:
-        # ВК строит карточку с обложкой (og:image) по первой ссылке. Токен сообщества
-        # не даёт загружать фото, поэтому обложка идёт через карточку ссылки.
-        cta = self.cfg.cta
+        message = self.generator.generate(item, hashtags=self.cfg.hashtags, cta=self.cfg.cta)
+
+        # Первая строка поста (заголовок) становится ссылкой на страницу фильма
+        # на Кинопоиске: формат ВК [url|текст]. Адрес не виден, ссылка кликабельна.
+        # Токен сообщества не даёт загружать фото, поэтому обложку ВК строит по ссылке.
         if item.film_id:
-            cta = f"https://www.kinopoisk.ru/film/{item.film_id}/\n\n{cta}"
-        message = self.generator.generate(item, hashtags=self.cfg.hashtags, cta=cta)
+            first_line, _, rest = message.partition("\n")
+            url = f"https://www.kinopoisk.ru/film/{item.film_id}/"
+            safe_line = first_line.replace("[", "").replace("]", "").replace("|", "")
+            message = f"[{url}|{safe_line}]\n{rest}"
 
         image_bytes = self.images.download(item.poster_url)
 

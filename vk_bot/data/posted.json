@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 59
+    "counter": 60
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -320,6 +320,12 @@
       "title": "Телохранители",
       "post_id": 77,
       "type": "recommendation"
+    },
+    "kinopoisk:5426284": {
+      "posted_at": 1791132810,
+      "title": "Романовы: преданность и предательство",
+      "post_id": 78,
+      "type": "fact"
     }
   }
 }

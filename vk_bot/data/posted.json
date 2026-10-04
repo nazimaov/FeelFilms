@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 60
+    "counter": 61
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -326,6 +326,12 @@
       "title": "Романовы: преданность и предательство",
       "post_id": 78,
       "type": "fact"
+    },
+    "kinopoisk:10167857": {
+      "posted_at": 1791139019,
+      "title": "Подводная братва. На страже рифа",
+      "post_id": 79,
+      "type": "premiere"
     }
   }
 }

@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 57
+    "counter": 58
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -308,6 +308,12 @@
       "title": "Монстры",
       "post_id": 75,
       "type": "fact"
+    },
+    "kinopoisk:12251733": {
+      "posted_at": 1791131658,
+      "title": "Добро пожаловать в Декорадо",
+      "post_id": 76,
+      "type": "premiere"
     }
   }
 }

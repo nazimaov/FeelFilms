@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 58
+    "counter": 59
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -314,6 +314,12 @@
       "title": "Добро пожаловать в Декорадо",
       "post_id": 76,
       "type": "premiere"
+    },
+    "kinopoisk:5059049": {
+      "posted_at": 1791132530,
+      "title": "Телохранители",
+      "post_id": 77,
+      "type": "recommendation"
     }
   }
 }

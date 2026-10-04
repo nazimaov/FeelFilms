@@ -3139,42 +3139,20 @@ function renderRutubePanel(statusText, items) {
 
 // Кнопка «Смотреть»: ищет фильм на RuTube по названию и году. Лучший ролик
 // включается сам; остальные доступны по кнопке «Другие варианты».
-// Если в плеере ничего не нашли, даём искать фильм в Mail.ru или VK Видео.
+// Если в плеере ничего не нашли, даём официальный запасной вариант: Кинопоиск.
 // Ссылка открывает приложение, если оно установлено, иначе сайт.
 function addSearchElsewhereButtons(panel, movie) {
-    const title = (movie?.title || '').toString().trim();
-    const year = movie?.year ? ` ${movie.year}` : '';
-    const query = encodeURIComponent(`${title}${year}`);
     const kinopoiskId = Number(movie?.kinopoiskId || movie?.id);
-
+    if (!Number.isFinite(kinopoiskId) || kinopoiskId <= 0) return;
     const wrap = document.createElement('div');
     wrap.className = 'rutube-search-elsewhere';
-
     // Кинопоиск — официальный запасной вариант: там показаны легальные онлайн-кинотеатры.
-    if (Number.isFinite(kinopoiskId) && kinopoiskId > 0) {
-        const kinopoiskButton = document.createElement('button');
-        kinopoiskButton.type = 'button';
-        kinopoiskButton.className = 'rutube-open-btn';
-        kinopoiskButton.textContent = 'Смотреть на Кинопоиске';
-        kinopoiskButton.addEventListener('click', () => openExternalUrl(`https://www.kinopoisk.ru/film/${kinopoiskId}/`));
-        wrap.appendChild(kinopoiskButton);
-    }
-
-    const toggle = document.createElement('button');
-    toggle.type = 'button';
-    toggle.className = 'rutube-open-btn';
-    toggle.textContent = 'Другие сервисы';
-    const row = document.createElement('div');
-    row.className = 'rutube-search-elsewhere-row';
-    row.hidden = true;
-    const vkButton = document.createElement('button');
-    vkButton.type = 'button';
-    vkButton.className = 'rutube-open-btn';
-    vkButton.textContent = 'VK Видео';
-    vkButton.addEventListener('click', () => openExternalUrl(`https://vkvideo.ru/search?q=${query}`));
-    row.appendChild(vkButton);
-    toggle.addEventListener('click', () => { row.hidden = !row.hidden; });
-    wrap.append(toggle, row);
+    const kinopoiskButton = document.createElement('button');
+    kinopoiskButton.type = 'button';
+    kinopoiskButton.className = 'rutube-open-btn';
+    kinopoiskButton.textContent = 'Смотреть на Кинопоиске';
+    kinopoiskButton.addEventListener('click', () => openExternalUrl(`https://www.kinopoisk.ru/film/${kinopoiskId}/`));
+    wrap.appendChild(kinopoiskButton);
     panel.appendChild(wrap);
 }
 

@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 56
+    "counter": 57
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -302,6 +302,12 @@
       "title": "Спецы",
       "post_id": 73,
       "type": "recommendation"
+    },
+    "kinopoisk:1435087": {
+      "posted_at": 1791128932,
+      "title": "Монстры",
+      "post_id": 75,
+      "type": "fact"
     }
   }
 }

@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 62
+    "counter": 63
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -338,6 +338,12 @@
       "title": "Вышка 2",
       "post_id": 81,
       "type": "recommendation"
+    },
+    "kinopoisk:8744383": {
+      "posted_at": 1791330881,
+      "title": "Трудный ребёнок",
+      "post_id": 82,
+      "type": "fact"
     }
   }
 }

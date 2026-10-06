@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 61
+    "counter": 62
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -332,6 +332,12 @@
       "title": "Подводная братва. На страже рифа",
       "post_id": 79,
       "type": "premiere"
+    },
+    "kinopoisk:5610132": {
+      "posted_at": 1791318110,
+      "title": "Вышка 2",
+      "post_id": 81,
+      "type": "recommendation"
     }
   }
 }

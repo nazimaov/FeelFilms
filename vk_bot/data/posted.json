@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 64
+    "counter": 65
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -350,6 +350,12 @@
       "title": "TheatreHD: Гамлет | Коллаж",
       "post_id": 83,
       "type": "premiere"
+    },
+    "kinopoisk:7077372": {
+      "posted_at": 1791551733,
+      "title": "Сердце зверя",
+      "post_id": 84,
+      "type": "recommendation"
     }
   }
 }

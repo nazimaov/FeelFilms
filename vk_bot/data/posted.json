@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 65
+    "counter": 66
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -356,6 +356,12 @@
       "title": "Сердце зверя",
       "post_id": 84,
       "type": "recommendation"
+    },
+    "kinopoisk:5494049": {
+      "posted_at": 1791844504,
+      "title": "Человек-паук: Новый день",
+      "post_id": 85,
+      "type": "fact"
     }
   }
 }

@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 66
+    "counter": 67
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -362,6 +362,12 @@
       "title": "Человек-паук: Новый день",
       "post_id": 85,
       "type": "fact"
+    },
+    "kinopoisk:10187722": {
+      "posted_at": 1792019556,
+      "title": "Чарли и Харпер",
+      "post_id": 86,
+      "type": "premiere"
     }
   }
 }

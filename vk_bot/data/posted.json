@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 67
+    "counter": 68
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -368,6 +368,12 @@
       "title": "Чарли и Харпер",
       "post_id": 86,
       "type": "premiere"
+    },
+    "kinopoisk:1435343": {
+      "posted_at": 1792149940,
+      "title": "Джентльмены",
+      "post_id": 87,
+      "type": "recommendation"
     }
   }
 }

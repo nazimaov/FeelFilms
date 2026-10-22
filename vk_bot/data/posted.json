@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 68
+    "counter": 69
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -374,6 +374,12 @@
       "title": "Джентльмены",
       "post_id": 87,
       "type": "recommendation"
+    },
+    "kinopoisk:7954692": {
+      "posted_at": 1792669913,
+      "title": "Трудно быть богом",
+      "post_id": 88,
+      "type": "fact"
     }
   }
 }

@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 69
+    "counter": 70
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -380,6 +380,12 @@
       "title": "Трудно быть богом",
       "post_id": 88,
       "type": "fact"
+    },
+    "kinopoisk:9321315": {
+      "posted_at": 1792782754,
+      "title": "Красный экран",
+      "post_id": 89,
+      "type": "premiere"
     }
   }
 }

@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 70
+    "counter": 71
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -386,6 +386,12 @@
       "title": "Красный экран",
       "post_id": 89,
       "type": "premiere"
+    },
+    "kinopoisk:8545317": {
+      "posted_at": 1792865251,
+      "title": "Полдень",
+      "post_id": 90,
+      "type": "recommendation"
     }
   }
 }

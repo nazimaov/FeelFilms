@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 71
+    "counter": 72
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -392,6 +392,12 @@
       "title": "Полдень",
       "post_id": 90,
       "type": "recommendation"
+    },
+    "kinopoisk:4859012": {
+      "posted_at": 1792927279,
+      "title": "Рождение империи",
+      "post_id": 91,
+      "type": "fact"
     }
   }
 }

@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 72
+    "counter": 73
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -398,6 +398,12 @@
       "title": "Рождение империи",
       "post_id": 91,
       "type": "fact"
+    },
+    "kinopoisk:8357994": {
+      "posted_at": 1793019433,
+      "title": "Царевна Несмеяна",
+      "post_id": 92,
+      "type": "premiere"
     }
   }
 }

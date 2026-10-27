@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 73
+    "counter": 74
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -404,6 +404,12 @@
       "title": "Царевна Несмеяна",
       "post_id": 92,
       "type": "premiere"
+    },
+    "kinopoisk:5249042": {
+      "posted_at": 1793131772,
+      "title": "Папины дочки. Новые",
+      "post_id": 93,
+      "type": "recommendation"
     }
   }
 }

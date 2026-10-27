@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 74
+    "counter": 75
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -410,6 +410,12 @@
       "title": "Папины дочки. Новые",
       "post_id": 93,
       "type": "recommendation"
+    },
+    "kinopoisk:2000102": {
+      "posted_at": 1793144775,
+      "title": "Киберпанк: Бегущие по краю",
+      "post_id": 94,
+      "type": "fact"
     }
   }
 }

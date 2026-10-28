@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 75
+    "counter": 76
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -416,6 +416,12 @@
       "title": "Киберпанк: Бегущие по краю",
       "post_id": 94,
       "type": "fact"
+    },
+    "kinopoisk:5444471": {
+      "posted_at": 1793218617,
+      "title": "Спарта 2. Гоплиты",
+      "post_id": 95,
+      "type": "premiere"
     }
   }
 }

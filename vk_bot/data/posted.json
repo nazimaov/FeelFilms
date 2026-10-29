@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 76
+    "counter": 77
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -422,6 +422,12 @@
       "title": "Спарта 2. Гоплиты",
       "post_id": 95,
       "type": "premiere"
+    },
+    "kinopoisk:6588291": {
+      "posted_at": 1793304997,
+      "title": "Сказка о потерянном времени",
+      "post_id": 96,
+      "type": "recommendation"
     }
   }
 }

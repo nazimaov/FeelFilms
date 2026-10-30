@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 77
+    "counter": 78
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -428,6 +428,12 @@
       "title": "Сказка о потерянном времени",
       "post_id": 96,
       "type": "recommendation"
+    },
+    "kinopoisk:42571": {
+      "posted_at": 1793364817,
+      "title": "Иди и смотри",
+      "post_id": 97,
+      "type": "fact"
     }
   }
 }

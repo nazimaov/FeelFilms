@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 78
+    "counter": 79
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -434,6 +434,12 @@
       "title": "Иди и смотри",
       "post_id": 97,
       "type": "fact"
+    },
+    "kinopoisk:366217": {
+      "posted_at": 1793562174,
+      "title": "TheatreHD: Роберт Уилсон: Альцеста",
+      "post_id": 98,
+      "type": "premiere"
     }
   }
 }

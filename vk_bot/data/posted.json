@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 80
+    "counter": 81
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -446,6 +446,12 @@
       "title": "Обитель зла",
       "post_id": 99,
       "type": "recommendation"
+    },
+    "kinopoisk:843389": {
+      "posted_at": 1793827117,
+      "title": "Невский",
+      "post_id": 100,
+      "type": "fact"
     }
   }
 }

@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 79
+    "counter": 80
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -440,6 +440,12 @@
       "title": "TheatreHD: Роберт Уилсон: Альцеста",
       "post_id": 98,
       "type": "premiere"
+    },
+    "kinopoisk:7378605": {
+      "posted_at": 1793802416,
+      "title": "Обитель зла",
+      "post_id": 99,
+      "type": "recommendation"
     }
   }
 }

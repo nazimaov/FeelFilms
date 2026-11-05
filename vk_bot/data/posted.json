@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 81
+    "counter": 82
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -452,6 +452,12 @@
       "title": "Невский",
       "post_id": 100,
       "type": "fact"
+    },
+    "kinopoisk:10170290": {
+      "posted_at": 1793914551,
+      "title": "Как поймать Деда Мороза",
+      "post_id": 101,
+      "type": "premiere"
     }
   }
 }

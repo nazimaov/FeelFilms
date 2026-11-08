@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 83
+    "counter": 84
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -464,6 +464,12 @@
       "title": "Морозко",
       "post_id": 102,
       "type": "recommendation"
+    },
+    "kinopoisk:1049731": {
+      "posted_at": 1794166900,
+      "title": "Чёрный клевер",
+      "post_id": 103,
+      "type": "fact"
     }
   }
 }

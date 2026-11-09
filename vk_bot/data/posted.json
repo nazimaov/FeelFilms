@@ -1,6 +1,6 @@
 {
   "meta": {
-    "counter": 84
+    "counter": 85
   },
   "posts": {
     "kinopoisk:13250428": {
@@ -470,6 +470,12 @@
       "title": "Чёрный клевер",
       "post_id": 103,
       "type": "fact"
+    },
+    "kinopoisk:10439638": {
+      "posted_at": 1794240853,
+      "title": "Новый дом",
+      "post_id": 104,
+      "type": "premiere"
     }
   }
 }
